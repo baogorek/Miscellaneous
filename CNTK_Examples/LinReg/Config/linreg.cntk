@@ -1,0 +1,61 @@
+DeviceNumber = 0 #Use CPU
+precision = "float"
+modelPath = "Models/LinReg.dnn"
+
+command = linregTrain:dumpNodeInfo
+
+linregTrain = [
+  action = "train"
+
+  NDLNetworkBuilder = [
+      run = LinReg
+      LinReg=[
+
+        #Inputs
+        features = Input(2, 1)
+        labels = Input(1, 1)
+      
+        #Parameters
+        Int = Parameter(1, 1) # Intercept for linear model
+        Beta = Parameter(1, 2) # regression weights
+      
+        #Computation
+        Times1 = Times(Beta, features)
+        LinPred= Plus(Times1, Int)
+      
+        #TrainingCriterion
+        CE = SquareError(labels, LinPred)
+      
+        #Special Nodes
+        FeatureNodes = (features)
+        LabelNodes = (labels)
+        CriteriaNodes = (CE)
+        OutputNodes = (LinPred)
+      ]
+   ]
+
+  SGD = [
+    epochSize = 0 # use entire data set
+    minibatchSize = 5 
+    learningRatesPerSample = 0.1*10:.01*90:.001
+    maxEpochs=500
+  ]
+  reader = [
+    readerType = "UCIFastReader"
+    file="Data/fiveRows.txt"
+    features = [
+      start = 0
+      dim = 2 
+    ]
+    labels=[
+      start = 2
+      dim = 1
+      labelType = regression
+    ]
+  ]
+]
+
+dumpNodeInfo = [
+  action = "dumpnode"
+  printValues = true
+]

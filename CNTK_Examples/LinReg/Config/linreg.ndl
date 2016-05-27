@@ -1,0 +1,27 @@
+run = LinReg
+LinReg=[
+  #Inputs
+  features = InputValue(2, tag="feature")
+  labels = InputValue(1, tag="label")
+  
+  #Parameters
+  Int = Parameter(1, 1) # Intercept for linear model
+  Beta = Parameter(2, 1) # regression weights
+  
+  #Computation
+  Times1 = Times(features, Beta)
+  LinPred= Plus(Int, Times1)
+  
+  #TrainingCriterion
+  CE = SquareError(labels, LinPred)
+  
+  #Test Objective Function
+  #ErrPredict = SquareError(labels, LinPred)
+  
+  #Special Nodes
+  FeatureNodes = (features)
+  LabelNodes = (labels)
+  CriterionNodes = (CE)
+  #EvalNodes = (ErrPredict)
+  OutputNodes = (LinPred)
+]
