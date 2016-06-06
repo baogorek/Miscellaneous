@@ -1,0 +1,104 @@
+command=Train:Output:dumpNodeInfo:Test
+modelPath="Models/logistic.dnn"
+
+# training config
+Train = [
+  action = "train"
+
+  NDLNetworkBuilder = [
+  
+    run = ndlLR
+  
+    ndlLR = [
+      # Sample and label dimensions
+      SDim = 2
+      LDim = 1
+  
+      features = Input(SDim, 1) # 2 x 1
+      labels = Input(LDim, 1) # 1 x 1
+  
+      # parameters to learn
+      B = Parameter(LDim, 1) # 1 x 1
+      W = Parameter(LDim, SDim) # 1 x 2
+  
+      # operations
+      t = Times(W, features)
+      z = Plus(t, B)
+      s = Sigmoid(z)
+  
+  
+      LR = Logistic(labels, s) # Training with logistic loss
+      EP = SquareError(labels, s) # Test Criterion
+  
+      # root nodes
+      FeatureNodes = (features)
+      LabelNodes = (labels)
+      CriteriaNodes = (LR)
+      EvalNodes = (EP)
+      OutputNodes = (s)
+    ]
+  ]
+
+  SGD = [
+    epochSize = 0
+    minibatchSize = 25
+    learningRatesPerMB = 0.1
+    maxEpochs = 50
+  ]
+
+  reader = [
+    readerType = "UCIFastReader"
+    file = "Data/Train.txt"
+    features = [
+      start = 0
+      dim = 2
+    ]
+    labels = [
+      start = 2
+      dim = 1
+      labelType = regression
+    ] 
+  ]
+]
+
+# output the results
+Output = [
+  action = "write"
+  reader = [
+    readerType = "UCIFastReader"
+    file = "Data/Test.txt"
+    features = [
+      start = 0
+      dim = 2 
+    ]
+    labels = [
+      start = 2
+      dim = 1
+      labelType = regression
+    ]
+  ]
+  outputPath = "Output/LR.txt"
+]
+
+# testing, will make use of EvalNodes
+Test = [
+  action = "test"
+  reader = [
+    readerType = "UCIFastReader"
+    file = "Data/Test.txt"
+    features = [
+      dim = 2
+      start = 0
+    ]
+    labels = [
+      start = 2 
+      dim = 1
+      labelType = regression
+    ]
+  ]
+]
+
+dumpNodeInfo = [
+  action = "dumpnode"
+  printValues = true
+]

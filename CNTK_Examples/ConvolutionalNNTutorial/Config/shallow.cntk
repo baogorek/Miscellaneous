@@ -1,0 +1,92 @@
+deviceId = -1 
+command = train:dumpmodel:test
+precision = "float"
+modelPath = "Model/nn_model"
+
+imageLayout = "cudnn"  # I don't know what this does in this case
+
+Train = [
+    action = "train"
+    NDLNetworkBuilder = [
+        run = "myndl"
+        myndl = [
+            featDim = 784 
+            labelDim = 10
+            
+            features = Input(featDim) # 784 x 1 vector
+ 
+            labels = Input(labelDim) # 10 x 1 vector
+            
+            hiddenDim = 200
+            
+            # Next two functions defined in Macros.ndl
+            # features to hidden layer
+            W = Parameter(200, 784, init = "uniform")
+            b = Parameter(200, 1, init = "uniform")
+            times1 = Times(W, Scale(Constant(0.00390625), features))
+            plus1 = Plus(b, times1)
+            h1 = Sigmoid(plus1)
+
+            # hidden layer to output layer 
+            X = Parameter(10, 200, init = "uniform")
+            a = Parameter(10, 1, init = "uniform")
+            times2 = Times(X, h1)
+            o1 = Plus(a, times2)
+            
+            CE = CrossEntropyWithSoftmax (labels, o1)
+            EV = ErrorPrediction(labels, o1) 
+            FeatureNodes = (features)
+            LabelNodes = (labels)
+            CriteriaNodes = (CE)
+            EvalNodes = (EV)
+            OutputNodes = (o1)
+        ]
+    ]
+        
+    SGD = [
+        epochSize = 60000
+        minibatchSize = 32   # no of samples processed between model updates
+        learningRatesPerMB = 0.15  # Ave learning rate per sample: this / MB size
+        momentumPerMB = 0.9
+        maxEpochs = 30
+    ]
+    reader = [
+        readerType = "CNTKTextFormatReader"
+        file = "Data/Train-28x28_cntk_text.txt"
+        input = [
+            features = [
+                dim = 784
+                format = "dense"
+            ]
+            labels = [
+                dim = 10
+                format = "dense"
+            ]
+        ]
+    ]
+]
+
+dumpmodel = [
+  action = "dumpnode"
+  printValues = true
+]
+
+Test = [
+    action = "test"
+    minibatchSize = 16
+ 
+    reader = [
+        readerType = "CNTKTextFormatReader"
+        file = "Data/Test-28x28_cntk_text.txt"
+        input = [
+          features = [
+            dim = 784
+            format = "dense"
+          ]
+          labels = [
+            dim = 10
+            format = "dense"
+          ]
+       ]
+    ]
+]  
