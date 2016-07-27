@@ -68,3 +68,32 @@ hadoop jar /usr/lib/hadoop/hadoop-streaming.jar \
 
 hdfs dfs -cat /tutorial/output/*
 
+
+# finally found the log files on the worker node at:
+# /mnt/var/log/hadoop-yarn/containers/application_1469620967087_0005/container_1469620967087_0005_01_000030
+# This page pointed me in the right direction but really it was a lot of 
+# grepping. Grepping for the library name got me to the right place
+
+Traceback (most recent call last):
+  File "/mnt2/yarn/usercache/hadoop/appcache/application_1469620967087_0005/container_1469620967087_0005_01_000030/././mapper-w-lib.py", line 11, in <module>
+    import theano
+  File "myLibs/theano/__init__.py", line 70, in <module>
+    from theano.compile import (
+  File "myLibs/theano/compile/__init__.py", line 10, in <module>
+    from theano.compile.function_module import *
+  File "myLibs/theano/compile/function_module.py", line 21, in <module>
+    import theano.compile.mode
+  File "myLibs/theano/compile/mode.py", line 12, in <module>
+    import theano.gof.vm
+  File "myLibs/theano/gof/vm.py", line 654, in <module>
+    from . import lazylinker_c
+  File "myLibs/theano/gof/lazylinker_c.py", line 42, in <module>
+    location = os.path.join(config.compiledir, 'lazylinker_ext')
+  File "myLibs/theano/configparser.py", line 324, in __get__
+    self.__set__(cls, val_str)
+  File "myLibs/theano/configparser.py", line 335, in __set__
+    self.val = self.filter(val)
+  File "myLibs/theano/configdefaults.py", line 1673, in filter_compiledir
+    " '%s'. Check the permissions." % path)
+ValueError: Unable to create the compiledir directory '/home/.theano/compiledir_Linux-4.4-amzn1.x86_64-x86_64-with-glibc2.2.5-x86_64-2.7.10-64'. Check the permissions.
+
