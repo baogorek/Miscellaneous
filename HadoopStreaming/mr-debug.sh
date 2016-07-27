@@ -62,7 +62,7 @@ hdfs dfs -rm -R /tutorial/output
 # The real thing
 hadoop jar /usr/lib/hadoop/hadoop-streaming.jar \
   -files ./mapper-w-lib.py,./reducer.py  \
-  -archives ./requests.mod \
+  -archives ./theano.tar.gz#myLibs \
   -mapper ./mapper-w-lib.py -reducer ./reducer.py \
   -input /tutorial/input/* -output /tutorial/output
 
