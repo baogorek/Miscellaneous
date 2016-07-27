@@ -54,3 +54,17 @@ hadoop jar /usr/lib/hadoop/hadoop-streaming.jar \
   -mapper ./dummy-mapper.sh -reducer ./dummy-mapper.sh \ 
   -input /tutorial/input/* -output /tutorial/output
 
+# Trying to send theano out to the nodes
+chmod +x mapper-w-lib.py
+# delete if it exists
+hdfs dfs -rm -R /tutorial/output
+
+# The real thing
+hadoop jar /usr/lib/hadoop/hadoop-streaming.jar \
+  -files ./mapper-w-lib.py,./reducer.py  \
+  -archives ./requests.mod \
+  -mapper ./mapper-w-lib.py -reducer ./reducer.py \
+  -input /tutorial/input/* -output /tutorial/output
+
+hdfs dfs -cat /tutorial/output/*
+
