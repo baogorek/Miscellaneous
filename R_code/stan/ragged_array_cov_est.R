@@ -3,7 +3,7 @@ library(MASS)
 library(dplyr)
 library(tidyr)
 
-n_clusters <- 10000
+n_clusters <- 1000
 
 cluster_list <- lapply(1:n_clusters,
                        FUN = function(i) {list(type = sample(1:3, sample(2:3)),
@@ -43,8 +43,8 @@ stanDat <- list(
   subj_upper = cluster_df$high_index
 )
 
-quick_compile <- stanc("c:/devl/FantasySports/models/two_normals.stan")
-stan_model_fit <- stan(file = "c:/devl/FantasySports/models/two_normals.stan",
+quick_compile <- stanc("c:/devl/FantasySports/models/ragged_array_cov_est.stan")
+stan_model_fit <- stan(file = "c:/devl/FantasySports/models/ragged_array_cov_est.stan",
                        model_name = "test model",
                        control = list(adapt_delta = .85),
                        data = stanDat, iter = 2000,
