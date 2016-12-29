@@ -1,3 +1,7 @@
+functions {
+  real bound(real rho1) return sqrt( 1 / ( 1 + (1 - rho1) / (1 + rho1) ) );
+}
+
 data {
   int n_row;
   int cluster[n_row];
@@ -10,10 +14,10 @@ data {
 
 
 parameters {
- real<lower=-1, upper=1> rho1;
- real<lower=-1, upper=1> rho2;
- real<lower=0> sigma_a;
- real<lower=0> sigma_b;
+  real<lower=-1, upper=1> rho1;
+  real<lower=-bound(rho1),upper=bound(rho1)> rho2;
+  real<lower=0> sigma_a;
+  real<lower=0> sigma_b;
 }
 
 transformed parameters {
