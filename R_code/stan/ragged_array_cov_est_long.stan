@@ -1,5 +1,3 @@
-
-
 data {
   int n_row;
   int cluster[n_row];
@@ -61,5 +59,4 @@ model {
       y_vec3 ~ multi_normal(mu_3, Sigma_3);
     }
   }
-
 }
