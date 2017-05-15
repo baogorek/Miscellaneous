@@ -1,4 +1,5 @@
-R_code
-======
+Exploring concepts in R
+=======================
 
-Demo R code
+A personal repository of R code. At one point I was excited about every one
+of these concepts. I'm currently cleaning up the folder.

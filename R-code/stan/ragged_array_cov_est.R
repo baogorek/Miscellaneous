@@ -7,7 +7,7 @@ library(tidyr)
 # Simulation of 2 and 3 dimensional Gaussian vectors with sparse cov structure
 ##############################################################################
 
-n_clusters <- 10000
+n_clusters <- 1000
 
 cluster_list <- lapply(1:n_clusters,
                        FUN = function(i) {list(type = sample(1:3, sample(2:3)),
@@ -32,11 +32,11 @@ for (j in 1:n_clusters) {
                                      y = y))
 }
 
-sim_df <- sim_df[order(sim_df$cluster, sim_df$type), ]
+######################################################
+# Working with Data in Long form
+######################################################
 
-######################################################
-# Getting Data in Long form
-######################################################
+sim_df <- sim_df[order(sim_df$cluster, sim_df$type), ]
 
 cluster_df <- sim_df %>% mutate(row_no = row_number()) %>% group_by(cluster) %>%
   summarise(low_index = min(row_no), high_index = max(row_no))
@@ -55,8 +55,8 @@ stanDat <- list(
 stan_model_fit <- stan(file = "ragged_array_cov_est_long.stan",
                        model_name = "long form model",
                        control = list(adapt_delta = .85),
-                       data = stanDat, iter = 2000,
-                       warmup = 500,
+                       data = stanDat, iter = 1000,
+                       warmup = 100,
                        chains = 3, verbose = FALSE)
 
 ext <- rstan:::extract(stan_model_fit)
@@ -109,8 +109,8 @@ stanDat <- list(
 stan_model_fit <- stan(file = "ragged_array_cov_est_wide.stan",
                        model_name = "wide format model",
                        control = list(adapt_delta = .85),
-                       data = stanDat, iter = 2000,
-                       warmup = 500,
+                       data = stanDat, iter = 1000,
+                       warmup = 100,
                        chains = 3, verbose = FALSE)
 
 ext <- rstan:::extract(stan_model_fit)
