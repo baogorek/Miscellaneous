@@ -1,6 +1,4 @@
-# TODO: Add comment
-#   to alter: Preferences->StatET->Code Generation
-# Author: OGOREKB
+# Plots bootstrap replicates of a loess fit
 
 library(bootstrap)
 
