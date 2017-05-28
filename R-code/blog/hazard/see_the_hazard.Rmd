@@ -1,0 +1,150 @@
+---
+title: "Get a look at that hazard!"
+author: "Ben Ogorek"
+header-includes:
+   - \usepackage{bbm}
+date: "May 19, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Distributions vs Hazards 
+
+Distributions are hard things to love. They admit uncertainty.
+ They entail extra work beyond the best guess from an expectation or 
+machine learning model. They involve often dubious assumptions and 
+they can look rediculous in hindsight (TODO: add link).
+
+Work in "slight of hand" 
+
+That's why I've been surprized that modeling the hazard,
+ itself nothing more than an alternative representation
+of a distribution of lifetimes, is more appealing to dabblers in
+statistics. Maybe there's something fundamental about the uncertainty in when
+something will end, but I've met more than one analyst who really wanted to
+work with hazards. 
+
+
+I always push newcomers to discrete time-to-event analysis (and especially
+ [this excellent paper][https://statisticalhorizons.com/wp-content/uploads/Allison.SM82.pdf],
+by Paul Allison), but the dabblers push back and want the real thing.
+The celebrated proportional hazards model,
+(Cox 1972)[1][1]
+$$
+\lambda_0(t) \exp{\mathbf{x}_i * \beta}
+$$
+...
+where $\lambda_0(t)$ is the continuous "baseline" hazard function. Since
+we've subscribed to the proportional hazards assumption (and barring any
+time-varying covariates for now), we just need to look at $\lambda_0(t)$
+to get an understanding of the instantaneous risk through time. Does it have
+a bathtub shape? Is it always increasing? Or is it mostly flat?
+
+These are interesting and useful questions that shed light on the failure
+mechanism. So why then, does nearly every survival analysis tutorial on
+the web focus on estimating $H(t) = \int_0^t \lambda_0(t) \dt$, the "cumulative
+hazard", without ever showing $lambda_0(t)$? 
+
+Let's take it from a bayesian non-parametrics guy (Hjort 1990)[2][2]) who
+shouldn't be afraid to do anything:
+"Now \[the hazard\] is as difficult to estimate with good precision as is the
+density $F^{\prime}(t)$, so we prefer working with with the *cumulative 
+hazard*...The cumulative hazard can be defined even when $F$ has no density."
+
+
+In this article, we're going to *see* the hazard. Perhaps you're saying to
+yourself, if you've got the integral of the quantity you want, you're 90%
+of the way there - just use an approximate differentiation method. And we
+will, though we'll have to do some smoothing first. We'll also simulate
+from a baseline hazard that you probably never thought you'd come across.
+
+## Simulation
+
+Beyond R, there's likely nothing to be installed packages for this tutorial,
+as we'll be depending on `survival` and `splines` packages, a *recommended*
+and *base* package, respectively).
+```{r}
+library(survival)
+library(splines)
+```
+
+First, let's choose our sample size and set up an artificial data set with
+two covariates, $x_1$ and $x_2$.
+
+```{r}
+N <- 1000
+sim_data <- data.frame(x1 = rnorm(N), x2 = rnorm(N))
+```
+
+Though we're working with continuous time methods, for the purposes of
+simulation we must discretize time:
+
+```{r}
+t_max_for_sim <- 25 # Go out far enough to exceed last event (censor or death)
+delta <- .01
+
+t_seq <- seq(0, t_max_for_sim, delta)
+```
+
+Now here is the baseline hazard we're going to be simulating from. It's 
+a sinosoid with a bias term and a period of 12. Not exactly a "bathtub":
+
+```{r}
+baseline_hazard <- .1 * (1.1 + sin(2 * pi * t_seq / 12))
+plot(baseline_hazard ~ t_seq)
+```
+
+```{r}
+simulate_lifetime <- function(x1, x2) {
+  i <- 0
+  alive <- TRUE
+  censored <- FALSE
+  t_max_observable <- rgamma(1, 25, 2)
+  while(alive & !censored) {
+    i <- i + 1
+    pr_die_in_interval <- delta * baseline_hazard[i] * exp(.1 * x1 - .1 * x2)
+    alive <- !(runif(1) <= pr_die_in_interval)
+    censored <- t_seq[i] >= t_max_observable
+  }
+  return(c(t_seq[i], censored))
+}
+
+dat <- sapply(1:N, FUN = function(i) with(sim_data[i, ],
+                                          simulate_lifetime(x1, x2)))
+sim_data <- as.data.frame(cbind(sim_data, t(dat)))
+names(sim_data) <- c("x1", "x2", "t", "censored")
+
+# Start analysis with CoxPh
+
+my_model <- coxph(Surv(time = t, event = !censored, type = 'right') ~ x1 + x2,
+                  data = sim_data)
+summary(my_model)
+baseline_surv <- survfit(my_model)
+
+surv_df <- data.frame(S = baseline_surv$surv,
+                      H = baseline_surv$cumhaz,
+                      t = baseline_surv$time)
+
+
+surv_spline <- lm(H ~ ns(t, df = 12), data = surv_df)
+plot(surv_df$H ~ surv_df$t)
+lines(surv_spline$fitted ~ surv_df$t, col = "red")
+
+grid_df <- data.frame(t = t_seq)
+grid_df$H <- predict(surv_spline, newdata = grid_df)
+
+plot(diff(grid_df$H) / delta ~ t_seq[-1], xlim = c(0, 18))
+lines(baseline_hazard[-1] ~ t_seq[-1], col = "red")
+```
+
+
+
+## References
+
+[1]: Cox, D. R. 1972. "Regression Models and Life Tables (with Discussion)." Journal of the Royal Statistical
+Society, Series B 34:187-220.
+
+[2]: Hjort, N. (1990). Nonparametric Bayes estimators based on beta processes in models for life history data. Annals of Statistics 18, 1259–1294.
