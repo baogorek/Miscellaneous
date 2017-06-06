@@ -1,32 +1,30 @@
+# Simulates random CDFs using the Dirichlet distribution 
+# is this also the Dirichlet Process?
+# If so, this example needs to be explicit about the approximation being made
 
-# Base Weibull distribution 
- k <- 2
- lambda <- 5
-# Concentration Parameter
- alpha <- .5
+k <- 2
+lambda <- 5
+alpha <- .5
 
-x.grid <- seq(0, 15)
+x_grid <- seq(0, 15, .1)
 
-W.CDF <- pweibull(x.grid, shape = k, scale=lambda)
-plot(W.CDF~x.grid, type = "l")
+w_cdf <- pweibull(x_grid, shape = k, scale = lambda)
+plot(w_cdf ~ x_grid, type = "l", lwd = 3)
 
-### Unfortunately, rdirichlet is not provided in base R ###
-Dir.draw <- function(parms){
-  l <- length(parms)
-  v <- rep(0, times = l)
-  for(i in 1:l){
-  v[i] <- rgamma(1, shape = 1, scale = parms[i])
-  }
-  return(v / sum(v))
+rdirichlet <- function(alpha){
+  v <- rgamma(length(alpha), shape = 1, scale = alpha)
+  v / sum(v)
 }
 
-## Generate a random CDF ##
-CDF.draw <- function(base.CDF, alpha){
-  l <- length(base.CDF)
-  dir.draw <- Dir.draw(alpha * c(base.CDF[1], diff(base.CDF[1:(l-1)]), 1-base.CDF[l]) )
-  cumsum(dir.draw)
+#' Generate a random CDF
+rCDF <- function(base_cdf, alpha) {
+  l <- length(base_cdf)
+  bucket_probs <- c(base_cdf[1], diff(base_cdf[1:(l - 1)]), 1 - base_cdf[l])
+  x <- rdirichlet(alpha *  bucket_probs)
+  cumsum(x)
 }
- 
-lines(CDF.draw(W.CDF, .3)~x.grid, type = "l", lty = 2, col = "blue")
- 
 
+for (i in 1:10) {
+  cdf_draw <- rCDF(w_cdf, .3)
+  lines(cdf_draw ~ x_grid, type = "l", lty = 2, col = "blue")
+}
