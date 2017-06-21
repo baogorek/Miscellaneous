@@ -17,33 +17,28 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Distributions are hard things to love. They admit uncertainty.
 They're effort beyond the best guess from a 
-machine learning model. They involve often dubious assumptions, and that's
-often the least of the concerns considering
-[people don't understand them anyways.](https://www.inverse.com/article/6339-why-people-suck-at-understanding-probability)
-
-But in the case of *when* a potentially unpleasant event might occur,
-a little uncertainty goes a long way. And if the density and
-distribution functions of the time-to-event variable,
-$f(t)$ and $F(t)$,
-still don't resonate, the time-to-event situtation
-has its own instrument of uncertainty, the
+machine learning model. They often involve dubious assumptions.
+[People don't understand them anyways.](https://www.inverse.com/article/6339-why-people-suck-at-understanding-probability) But in regards to *when* a potentially unpleasant event might occur,
+a little uncertainty goes a long way. And if the time-to-event density
+$f(t)$ and distribution function $F(t)$ 
+still don't resonate, there's a special instrument of uncertainty
+just for the situation. The
 **hazard**, with the unavoidable interpretation of *instantaneous
-risk through time*:
+risk through time*, is defined as
 
 $$
 h(t) = f(t) / (1 - F(t)), t \in [0, \infty).
 $$
 
-Clearly the hazard contains the same information as the density, but
-its interpretation as an instantaneous risk (for those still suceptible)
-makes it an especially useful tool for regression modeling. If you've ever cringed at
+While the hazard contains no additionally information beyond the density,
+its interpretation as an instantaneous "risk" makes it especially useful for regression modeling. If you've ever cringed at
 a statement about the number of minutes each
-serving of product Y takes off your life,
+serving of Product Y takes off your life,
 then you're familiar with the awkwardness of
 ordinary regression with a time-to-event variable. 
 If consumption of Product Y was such a bad idea that it 
-[doubled your risk from the event in question](http://www.cnn.com/2017/06/14/health/fried-potatoes-early-death/index.html)
-at all points in time, that's more palatable.
+[doubled your risk](http://www.cnn.com/2017/06/14/health/fried-potatoes-early-death/index.html)
+at all points in time, that's not so weird.
 
 
 ```{r echo=FALSE}
@@ -98,19 +93,18 @@ offers convenient parametric forms for both hazard and density, but
 does not offer much flexibility in the hazard's shape.
 For instance, one shape that you might expect to see is a "bathtub," where
 the risk is high at early ages, low during the middle of life, and then
-increasing again in later life. The weibull model can't even accomodate that,
+increasing again in later life. The weibull model can't even accommodate that,
  and the likely complexity of any real $\lambda_0(t)$ 
 is why D. R. Cox's ([1972](#references)) result, allowing valid statistical
 inferences about $\beta$
-without any work to estimate $\lambda_0(t),$ is still so celebrated today.
+without any work to estimate $\lambda_0(t),$ is still so widely used today.
 
 ### Losing lambda
 
-On the other hand, $\lambda_0(t)$ may contain useful information about the
-failure mechanism at hand. But rather than estimating it directly, nearly
-every survival analysis tutorial on the web
-focuses on estimating $H(t) = \int_0^t \lambda_0(t) dt$, the "cumulative
-hazard" rather than the more interpretable $\lambda_0(t)$.
+On the other hand, $\lambda_0(t)$ contains useful information about the
+failure mechanism. But rather than estimating it directly, it is common to
+estimate instead $H(t) = \int_0^t \lambda_0(t) dt$, the "cumulative
+hazard."
 Bayesian nonparametrician [Hjort (1990)](#references) sheds some light on this:
 *"Now [the hazard] is as difficult to estimate with good precision as is the
 density $F^{\prime}(t)$, so we prefer working with with the cumulative 
@@ -118,18 +112,18 @@ hazard [emphasized]...The cumulative hazard can be defined even
 when $F$ has no density."*
 
 Cox's semiparametric method may cleverly avoid inference on $\lambda_0(t)$ 
-in favor of $\beta$, and $\lambda_0(t)$ may not be especially convenient to
+in favor of $\beta$, the former not being especially convenient to
 work with,
 but in this article we're going to *see* it anyway. 
-The plan is straightforward: apply smoothing to and then take an
-approximate derivative of the cumulative hazard.
+The plan is straightforward: apply smoothing to the cumulative hazard and
+then take an approximate derivative.
 But first we will simulate from a baseline hazard that will be 
 absolutely unmistakable if we're able to recover it: a sinusoid!
 
 ## Simulation of a sinusoidal hazard
 
-Beyond R, there's likely nothing to be installed packages for this tutorial,
-as we'll be depending on `survival` and `splines` packages (a *recommended*
+Beyond R itself, there's nothing to install.
+We'll be depending on `survival` and `splines` (a *recommended*
 and *base* package, respectively).
 ```{r}
 library(survival)
@@ -145,7 +139,7 @@ set.seed(14323)
 sim_data <- data.frame(x1 = rnorm(N), x2 = rnorm(N))
 ```
 
-Despite being continuous-time at heart, inside of a computer it is
+While this simulation is continuous-time at heart, inside of a computer it is
 necessary to discretize time. The smaller the value of `delta`, the closer
 the approximation to continuous time.
 
@@ -169,30 +163,34 @@ mtext(expression(lambda[0](t)), side = 2, line = 2.2, cex = 2)
 ```
 
 
-The following function simulates an observed lifetime given covariate values
-`x1` and `x2`, the baseline hazard (`lambda_0`) sampled over a time grid
-with equidistant spacing `dt`, and `dt` itself.
-The values of $\beta$ corresponding to `x1` and `x2`, 
-.1 and -.1, respectively, are hard-coded into the formula.
-A $Gamma(25, 2)$
+The following function, `simulate_lifetime`, simulates an observed lifetime
+given
+
+* covariate values `x1` and `x2` (the values of $\beta$ corresponding to `x1` and `x2`, 
+.1 and -.1, respectively, are hard-coded into the formula),
+* the baseline hazard (`lambda_0`) sampled over a time grid
+  with equidistant spacing `dt`,
+* `dt` itself.
+
+Additionally, a $Gamma(25, 2)$
 random variable is used as the max observable time; if the event time
 exceeds this value, then it will be "censored" and the max observable
-time is recorded in its place. Thus the return value is a bivariate vector,
+time is recorded in its place. The return value is a bivariate vector,
 the first
 element being the random event time and the second the censoring indicator.
 
-The event times (before considering censoring) can be generated directly from the 
+The event times (before censoring) can be generated directly from the 
 hazard via its definition as an infinitesimal quantity:
 $$
-h(t) = \lim_{\delta \rightarrow 0} \frac{Pr(T \in [t, t + \delta) | T \ge t)}{\delta},
+h(t) = \lim_{\delta \rightarrow 0} \frac{Pr(T \in [t, t + \delta) | T \ge t)}{\delta}.
 $$
-since for small $\delta$, 
+Since for small $\delta$, 
 $$
-\delta \cdot h(t) \approx Pr(T \in [t, t + \delta) | T \ge t).
+\delta \cdot h(t) \approx Pr(T \in [t, t + \delta) | T \ge t),
 $$
-Thus, one may simply traverse the intervals of the $\delta$-spaced grid,
-questioning whether a $\mathit{Uniform}(0, 1)$ random variable falls less than
-$\delta$ times the hazard at that grid point.
+one may simply traverse the intervals of the $\delta$-spaced grid,
+checking whether a $\mathit{Uniform}(0, 1)$ random variable falls less than
+$\delta$ times the hazard at the current point.
 ```{r}
 simulate_lifetime <- function(x1, x2, lambda_0, dt) {
   i <- 0
@@ -211,8 +209,6 @@ simulate_lifetime <- function(x1, x2, lambda_0, dt) {
 
 The final step in the simulation is to apply `simulate_lifetime` to every row
 of `sim_data` to finish our simulation.
-(Recall that the latter two passed parameters exist
-in the global environment.)
 ```{r}
 dat <- sapply(1:N, FUN = function(i) with(sim_data[i, ],
                                           simulate_lifetime(x1, x2,
@@ -225,46 +221,46 @@ head(sim_data)
 
 ## Recovering the hazard
 
-Applying the Cox Proportional Hazards model using the flagship `coxph`
-function from the `survival` package is quite convenient. Compare the estimates of
-$\beta_1$ and $\beta_2$ to .1 and -.1 respectively.
+Applying the Cox proportional hazards model using `coxph`
+from the `survival` package is straightforward. Compare the estimates
+of $\beta_1$ and $\beta_2$ to .1 and -.1 respectively.
 ```{r}
 my_model <- coxph(Surv(time = t, event = !censored, type = 'right') ~ x1 + x2,
                   data = sim_data)
 summary(my_model)
 ```
 
-Having $\hat{\beta}$ already is great, but
-we want that sinusoidal back. The `coxph` function will make us 
-work for it, but its output gives us everything we need.
+Recovering $\hat{\beta}$ with so little work is great, but
+we want the sinusoidal back. As discussed, we have to settle first
+for the cumulative hazard.
 ```{r}
 baseline_surv <- survfit(my_model)
 
-surv_df <- data.frame(H = baseline_surv$cumhaz,
-                      t = baseline_surv$time)
+haz_df <- data.frame(H = baseline_surv$cumhaz,
+                     t = baseline_surv$time)
 ```
 As tempting as it might be to simply take a difference of `H` as is,
 note that the intervals between points are of different sizes. Additionally,
 since `H` is constant between jumps, its derivative will be discontinuous,
 alternating from zero to the size of the jump.
 
-To get a continuous derivative, we need a sufficiently smooth function. And while
-there's definitely
-more than one way to do this, the parametric spline-based technique used below is fast
-and easily allows interpolation onto an equally spaced grid. The `df`
+To get a continuous derivative, we need a sufficiently smooth function. While
+there's more than one way to accomplish this, the parametric spline-based technique used
+below is fast
+and easily allows for interpolation onto an equally spaced grid. The `df`
 parameter controls the amount of smoothing, and the reader is encouraged
-to try higher and lower values while evaluating the resulting fit.
+to try higher and lower values.
 
 ```{r}
-surv_spline <- lm(H ~ ns(t, df = 12), data = surv_df)
-plot(surv_df$H ~ surv_df$t, main = "The cumulative hazard with spline fit",
+surv_spline <- lm(H ~ ns(t, df = 12), data = haz_df)
+plot(haz_df$H ~ haz_df$t, main = "The cumulative hazard with spline fit",
      ylab = "H(t)", xlab = "t", cex.lab = 1.4)
-lines(surv_spline$fitted ~ surv_df$t, col = "red", lwd = 1.2)
+lines(surv_spline$fitted ~ haz_df$t, col = "red", lwd = 1.2)
 ```
 
-It's time to see the hazard. First we'll use our spline representation of
+It's time to see the hazard. First we'll use our spline-based representation of
 the cumulative hazard to interpolate $\hat{H}(t)$ along our $\delta$-spaced
-grid. Next we difference the smoothed estimate and divide by the length
+grid. Next we'll difference the smoothed estimate and divide by the length
 of the interval ($\delta$) to get the approximate derivative.
 ```{r}
 grid_df <- data.frame(t = t_seq)
@@ -278,27 +274,24 @@ mtext(expression(hat(lambda[0])(t)), side = 2, line = 2.0, cex = 1.5)
 lines(baseline_hazard[-1] ~ t_seq[-1], col = "red", lwd = 1.3)
 ```
 
-The true baseline hazard is seen above in red. Our estimate is not perfect,
+The true baseline hazard is overlaid above in red. Our estimate is not perfect,
 but we've recovered the basic sinusoidal shape with only 1000 observations,
 roughly a quarter of which have been censored.
 
 # Discussion
 
-In this article, we have combined parametric spline-based smoothing of the cumulative
+In this article, we combined parametric spline-based smoothing of the cumulative
 hazard estimate with approximate differentiation to visualize an
 unconventional baseline hazard function. The method is not free from 
-tuning (e.g., the degree of smoothing) but we were able to recover the general
+tunable parameters, but we were able to recover the general
 shape of the hazard function by visually assessing the fit of the spline to the
 cumulative hazard.
 
-Clearly there are other options for smoothing beyond
-a parametric spline with a tunable number of
-of "degrees of freedom."
-Kernel methods stand out as an alternative, though 
-they depend on a bandwidth parameter. 
-Smoothing splines (with knots at every data point and shrinkage determined by
-cross validation) are another alternative,
-however in this author's informal experiments,
+There are other options for smoothing beyond
+parametric splines. Kernel methods stand out as one alternative.
+The use of smoothing splines, with knots at every data point and shrinkage determined by
+cross validation, is another. However,
+in this author's informal experiments,
 `stats::smooth.spline` did not result in sufficient
 smoothing when applied to the cumulative hazard.
 
@@ -306,13 +299,13 @@ In a typical application of the Cox proportional hazards model,
 the regression coefficients take center stage. While
 Cox's (1972)
 method allows regression
-parameter inference without modeling an infinitely dimensional 
+inference without modeling an infinite-dimensional 
 latent function,
 a more complete understanding of the time-to-event
 phenomenon under study is possible by visualizing the hazard. Though
-not as automatic as it's cumulative counterpart, seeing the hazard
+not as automatic as its cumulative counterpart, seeing the hazard
 is quickly achievable with
-R's smoothing tools and `survival` library. 
+R's smoothing tools and the `survival` library. 
 
 # References
 
