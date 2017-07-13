@@ -1,8 +1,8 @@
 library(survival)
 library(splines)
 
-N <- 1000
-t_max_for_sim <- 25 # Go out far enough to exceed last event (censor or death)
+N <- 400
+t_max_for_sim <- 340 # Go out far enough to exceed last event (censor or death)
 delta <- .01
 
 t_seq <- seq(0, t_max_for_sim, delta)
@@ -52,9 +52,92 @@ grid_df$H <- predict(surv_spline, newdata = grid_df)
 plot(diff(grid_df$H) / delta ~ t_seq[-1], xlim = c(0, 18))
 lines(baseline_hazard[-1] ~ t_seq[-1], col = "red")
 
+# Let's try this with stan
+
+library(rstan)
+
+# Must order data for this to work!
+stan_str <- "
+data {
+  int<lower=0> N;
+  matrix[N, 2] X;
+  real<lower=0> y[N];
+  vector[N] delta; // 1 is censoring
+}
+
+transformed data {
+  real kappa = 1e-9;
+  //int indices[N] = sort_indices_asc(y);
+}
+
+parameters {
+  real<lower=0> rho;
+  real<lower=0> alpha;
+  vector[N] eta;
+  vector[2] beta;
+}
+
+transformed parameters {
+  vector[N] log_lambda; // GP over log hazard
+  vector[N] H;
+  {
+    vector[N] areas;
+    matrix[N, N] K = cov_exp_quad(y, alpha, rho);
+    matrix[N, N] L_K;
+
+    for (k in 1:N) {
+      K[k, k] = K[k, k] + kappa;
+    }
+
+    L_K = cholesky_decompose(K);
+    log_lambda = L_K * eta;
+    
+    // trapezoidal rule to approximate integrals
+    areas[1] = (y[1] - 0) * (exp(log_lambda[1]) + 0) / 2;
+    areas[2:N] = (to_vector(y[2:N]) -
+                  to_vector(y[1:(N-1)])) .*
+                 (to_vector(exp(log_lambda[2:N])) +
+                  to_vector(exp(log_lambda[1:(N-1)]))) ./ 2;
+    H = cumulative_sum(areas);
+  }
+}
+
+model {
+  rho ~ gamma(4, 4);
+  alpha ~ normal(0, 1);
+  eta ~ normal(0, 1);
+  beta ~ normal(0, 10);
+
+  target += (1 - delta) .* (log_lambda + X * beta - exp(X * beta) .* H) -
+            (delta) .* exp(X * beta) .* H;
+}
+
+"
+
+sim_data <- sim_data[order(sim_data$t), ]
+fit <- stan(model_code = stan_str,
+            data = list(N = nrow(sim_data), y = sim_data$t,
+                        X = as.matrix(sim_data[, c("x1", "x2")]),
+                        delta = sim_data$censored),
+            control = list(adapt_delta = .80),
+            iter = 1200, warmup = 1000, chains = 1)
+
+e <- extract(fit)
+hist(e$beta[, 1])
+hist(e$beta[, 2])
+
+plot(e$H[1, ] ~ sim_data$t)
+plot(.1 * (1.1 + sin(2 * pi * t_seq / 12)) ~ t_seq,
+     xlim = c(0, 20), ylim = c(0, .4), type = "l", col = "blue", lwd = 3)
+
+for (i in 1:100) {
+  lines(exp(e$log_lambda[i, ]) ~ sim_data$t)
+}
+
 
 # This doesn't seem to work. Maybe tell the author
 library(BGPhazard)
+
 
 bgp_dat <- cbind(sim_data$t, sim_data$censored, sim_data[, c("x1", "x2")])
 cgm_model <- CGaMRes(bgp_dat, K = 26, iterations = 3000, type.t = 1)
