@@ -1,19 +1,11 @@
-# TODO: Add comment
-# 
-# Author: OGOREKB
-###############################################################################
-
-rm(list = ls())
-
 pdf("C:\\learning\\BrownianMotion.pdf")
 
-createT = function(res){
-	t = (1/res)*c(0:res)
-	dim(t) = length(t)
-	return( t )
+createT <- function(res) {
+  (1 / res) * c(0:res)
 }
 
-t = createT(1000)
+t = c(0:1000) / 1000
+createT(1000)
 
 # Case n = 0
 y_n = rnorm(1)*t
