@@ -1,4 +1,0 @@
-rm Output/*
-rm Models/*
-cntk configFile="Config/multiclass.cntk"
-cat Models/mc.dnn.__AllNodes__.txt 
