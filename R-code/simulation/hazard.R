@@ -134,7 +134,6 @@ for (i in 1:100) {
   lines(exp(e$log_lambda[i, ]) ~ sim_data$t)
 }
 
-
 # This doesn't seem to work. Maybe tell the author
 library(BGPhazard)
 
