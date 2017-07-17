@@ -1,24 +1,21 @@
-
-rm(list = ls())
-par(mfrow = c(1,1))
-
 library(igraph)  
 library(Cairo) 
 
-nodes <- read.csv("C://devl/XPlanR//myNodes.csv", header = T, stringsAsFactors = FALSE)  
-edges <-read.csv("C://devl/XPlanR//myEdges.csv", header = T, stringsAsFactors = FALSE)
+nodes <- read.csv("myNodes.csv", header = T, stringsAsFactors = FALSE)  
+edges <-read.csv("myEdges.csv", header = T, stringsAsFactors = FALSE)
                  
 nodes$storyInd = nodes$name %in% edges$from
 nodes$taskInd = nodes$name %in% edges$to
 
-toDoList <- read.csv("C://devl/XPlanR//ToDoList.csv", header = T, stringsAsFactors = FALSE)
+toDoList <- read.csv("ToDoList.csv", header = T, stringsAsFactors = FALSE)
 names(toDoList) <- c("to", "from")
 
 toDoItems <- toDoList$to
 nItems = length(toDoItems)
 
 edges <- rbind(edges, toDoList)
-nodes <- rbind(nodes, data.frame( name = toDoItems, storyInd = rep(F, nItems), taskInd = rep(F, nItems) ) )
+nodes <- rbind(nodes, data.frame(name = toDoItems, storyInd = rep(F, nItems),
+                                 taskInd = rep(F, nItems) ) )
 
 g <- graph.data.frame(edges, directed = T, vertices = nodes)
 g$layout = layout.fruchterman.reingold
@@ -47,17 +44,18 @@ V(g)[nodes$taskInd ==T]$label.color<- "blue"
 V(g)[nodes$storyInd == F & nodes$taskInd == F]$label.color<-"red"
 
 
-plot(g, ylim = c(1,-1), vertex.label.cex=1.2, vertex.frame.color=rgb(.5,.2,.3,.3))
+plot(g, ylim = c(1,-1), vertex.label.cex=1.2,
+     vertex.frame.color=rgb(.5,.2,.3,.3))
 
 getCoords <- function(){
    m <<- tkplot.getcoords(tk.g)
    print(m)
    tkplot.close(tk.g)
-   CairoPNG(file = "C://devl//XPlanR//manual web page//images//ToDoGraph.png")
+   CairoPNG(file = "ToDoGraph.png")
    plot(g, layout = m, ylim = c(1,-1), vertex.label.cex=1.2, vertex.frame.color=rgb(0,0,1,.01))
    dev.off()
    tkdestroy(tt)
-   save(list = c("m", "g", "nodes", "edges"), file = "C://devl//XPlanR//Rdata//initialGraph.RData")
+   save(list = c("m", "g", "nodes", "edges"), file = "initialGraph.RData")
 }
 
 
@@ -66,33 +64,15 @@ getCoords <- function(){
 tk.g <- tkplot(g, canvas.width = 600, canvas.height = 500)
 
 tt <- tktoplevel()
-label.widget <- tklabel(tt, text="Push to Capture Configuration")
-button.widget <- tkbutton(tt, text="Push",command=getCoords)
+label.widget <- tklabel(tt, text = "Push to Capture Configuration")
+button.widget <- tkbutton(tt, text="Push",command = getCoords)
 tkpack(label.widget, button.widget) # geometry manager
 
 #####END MAIN#####
 
-
-
-
-
-
-
-
-
-
-#After closing windows
-
-Cairo(file = "C://devl//XPlanR//manual web page//images//ToDoGraph.png", type = "png")
-plot(g, layout = m, ylim = c(1,-1))
-dev.off()
-
 # to plot it here
 g$layout <- m
 plot(g, layout = m, ylim=c(1,-1))
-
-
-
 
 ## Add to-do list ##
 g2 <- add.vertices(g,1)
@@ -106,11 +86,6 @@ g2$layout = rbind(g2$layout, c(445, 400))
 
 plot(g2, ylim = c(1,-1))
 
-
-
-
-
-
 #Competing Method
 
 g.components <- decompose.graph(g)
@@ -123,5 +98,3 @@ for(i in c(1:n.components)) {
           vertex.size = 20, edge.arrow.size = .5, edge.color = "blue",
           layout = layout.reingold.tilford) 
 }
-
-
