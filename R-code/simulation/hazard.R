@@ -1,6 +1,8 @@
 library(survival)
 library(splines)
+library(rstan)
 
+set.seed(5326)
 N <- 400
 t_max_for_sim <- 340 # Go out far enough to exceed last event (censor or death)
 delta <- .01
@@ -54,7 +56,6 @@ lines(baseline_hazard[-1] ~ t_seq[-1], col = "red")
 
 # Let's try this with stan
 
-library(rstan)
 
 # Must order data for this to work!
 stan_str <- "
@@ -113,14 +114,13 @@ model {
 }
 
 "
-
 sim_data <- sim_data[order(sim_data$t), ]
 fit <- stan(model_code = stan_str,
             data = list(N = nrow(sim_data), y = sim_data$t,
                         X = as.matrix(sim_data[, c("x1", "x2")]),
                         delta = sim_data$censored),
-            control = list(adapt_delta = .80),
-            iter = 1200, warmup = 1000, chains = 1)
+            control = list(adapt_delta = .85),
+            iter = 1500, warmup = 1000, chains = 1)
 
 e <- extract(fit)
 hist(e$beta[, 1])
@@ -133,6 +133,59 @@ plot(.1 * (1.1 + sin(2 * pi * t_seq / 12)) ~ t_seq,
 for (i in 1:100) {
   lines(exp(e$log_lambda[i, ]) ~ sim_data$t)
 }
+
+# Just the posterior mode (L-BFGS)
+m <- stan_model(model_code = stan_str)
+fit_mode <- optimizing(m)
+
+
+
+#############################################################
+
+# nnets -----------------------------------------------------
+library(nnet)
+
+ticks <- seq(0, 20, 1)
+
+grid_df <- data.frame(left = ticks, right = c(ticks[2:length(ticks)], 1000))
+
+sim_df <- merge(sim_data, grid_df, all = TRUE)
+sim_df <- sim_df[order(sim_df$x1, sim_df$t), ]
+sim_df <- sim_df[sim_df$left <= sim_df$t, ]
+sim_df$event <- sim_df$t >= sim_df$left & sim_df$t < sim_df$right
+sim_df <- sim_df[!(sim_df$censored & sim_df$event), ]
+sim_df$not_event <- !sim_df$event
+my_nnet <- nnet(cbind(event, not_event) ~ left + x1 + x2, size = 100,
+                data = sim_df,
+                maxit = 50, softmax = TRUE)
+p <- predict(my_nnet, type = "raw")
+sim_df$p <- p[, "event"]
+
+grid_df <- data.frame(left = ticks, x1 = rep(0, length(ticks)),
+                      x2 = rep(0, length(ticks)))
+
+p1 <- predict(my_nnet, newdata = grid_df, type = "raw")[, "event"]
+plot(p1 ~ ticks)
+
+grid_df <- data.frame(left = ticks, x1 = rep(1.5, length(ticks)),
+                      x2 = rep(0, length(ticks)))
+
+p2 <- predict(my_nnet, newdata = grid_df, type = "raw")[, "event"]
+
+grid_df <- data.frame(left = ticks, x1 = rep(0, length(ticks)),
+                      x2 = rep(1.5, length(ticks)))
+
+p3 <- predict(my_nnet, newdata = grid_df, type = "raw")[, "event"]
+
+
+truth <- .1 * (1.1 + sin(2 * pi * ticks / 12))
+plot(truth ~ ticks, type = "l", lwd = 3, ylim = c(0, .65))
+lines(p1 ~ ticks, col = "blue")
+lines(p2 ~ ticks, col = "turquoise")
+lines(p3 ~ ticks, col = "orange")
+
+
+
 
 # This doesn't seem to work. Maybe tell the author
 library(BGPhazard)
