@@ -1,4 +1,4 @@
-#plot shading demo
+#lot shading demo
 set.seed(7100)
 draws <- rnorm(100)^2
 dens <- density(draws)
