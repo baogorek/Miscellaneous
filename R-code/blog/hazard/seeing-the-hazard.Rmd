@@ -16,9 +16,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ### Distributions vs Hazards 
 
 Distributions are hard things to love. They admit uncertainty.
-They often involve dubious assumptions.
-[People don't understand them.](https://www.inverse.com/article/6339-why-people-suck-at-understanding-probability)
-But with regards to *when* a potentially unpleasant event might occur,
+They're effort beyond the best guess from a 
+machine learning model. They often involve dubious assumptions.
+[People don't understand them anyways.](https://www.inverse.com/article/6339-why-people-suck-at-understanding-probability) But in regards to *when* a potentially unpleasant event might occur,
 a little uncertainty goes a long way. And if the time-to-event density
 $f(t)$ and distribution function $F(t)$ 
 still don't resonate, there's a special instrument of uncertainty
@@ -30,7 +30,7 @@ $$
 h(t) = f(t) / (1 - F(t)), t \in [0, \infty).
 $$
 
-While the hazard technically contains no information beyond the density,
+While the hazard contains no additionally information beyond the density,
 its interpretation as an instantaneous "risk" makes it especially useful for regression modeling. If you've ever cringed at
 a statement about the number of minutes each
 serving of Product Y takes off your life,
@@ -40,44 +40,28 @@ If consumption of Product Y was such a bad idea that it
 [doubled your risk](http://www.cnn.com/2017/06/14/health/fried-potatoes-early-death/index.html)
 at all points in time, that's not so weird.
 
-```{r}
-library(ggplot2)
-library(ggthemes)
-library(reshape2)
 
-shape <- 1.2
+```{r echo=FALSE}
+
+shape <- 1.2 # try with 1, 1.5
 scale <- 5 
 
 t_seq <- seq(0, 15, .1)
 density <- dweibull(t_seq, shape, scale)
 hazard <- density / (1 - pweibull(t_seq, shape, scale))
+# hazard <- scale ^ (-shape) * shape * t_seq ^ (shape - 1) # Same as above!
+plot(density ~ t_seq, type = "l", col = "blue", lwd = 2, xlab = "t",
+     ylim = c(0, 1.5 * max(hazard)), ylab = "density (blue) or hazard (red)",
+     main = "Proportional hazards and their corresponding densities",
+     cex.axis = 1.2, cex.lab = 1.4, cex.main = 1.3)
+lines(hazard ~ t_seq, type = "l", col = "red", lwd = 2)
 
 hazard_b <- hazard * 1.3
 scale_b <- scale * (1.3) ^ (-1 / shape)
 density_b <- dweibull(t_seq, shape, scale_b) 
-
-haz_dat <- data.frame(density = density, hazard = hazard,
-                      density_b = density_b, hazard_b = hazard_b,
-                      t_seq = t_seq)
-plot_df <- melt(haz_dat, id = "t_seq")
-plot_df$type <- as.factor(grepl("density", plot_df$variable))
-levels(plot_df$type) <- c("hazard", "density")
-plot_df$group_b_flag <- grepl("_b", plot_df$variable)
-
-ggplot(plot_df, aes(y = value, x = t_seq, group = variable, color = type)) +
-  scale_color_manual(values = c("red", "blue")) +
-  geom_line(aes(linetype = group_b_flag), size = 1.2) +
-  ggtitle("Proportional hazards and their corresponding densities") +
-  facet_grid(type ~ ., switch = "y") + 
-  labs(x = "t", y = element_blank()) +
-  theme_gdocs() +
-  theme(legend.position  = "none",
-        strip.background = element_blank(),
-        strip.text.y     = element_text(size = 18),
-        strip.placement  = "outside",
-        plot.title       = element_text(size = 16, hjust = 0.5),
-        axis.text        = element_text(size = 14), 
-        axis.title       = element_text(size = 14))
+# hazard_b <- density_b / (1 - pweibull(t_seq, shape, scale_b)) same as above!
+lines(hazard_b ~ t_seq, type = "l", lty = 2, col = "red", lwd = 2)
+lines(density_b ~ t_seq, type = "l", lty = 2, col = "blue", lwd = 2)
 ```
 
 The above figure illustrates the relationship between the hazard (red) and
@@ -89,6 +73,22 @@ concentrated around smaller values of $t$.
 Both situations imply the same *aging* mechanism:
 the risk increases quickly at first, and then less quickly
 as time goes on.
+
+### Hazard regression
+To turn this into a regression problem, we need a way to modulate the positive
+multiplier on the hazard as a function of covariate vector $\mathbf{x}$.
+Using a linear
+approximation, one way is to put $\mathbf{x}^T \beta$
+in the exponent of a positive number. The most popular positive number to
+exponentiate surely is $e$, leading to the proportional hazards regression model
+$$
+h(t; \mathbf{x}, \beta) = \lambda_0(t) \exp(\mathbf{x}^T \mathbf{\beta}),
+$$
+
+where $\lambda_0(t)$ is the "baseline" hazard function that is proportionally
+raised or lowered depending on the values of the covariate $\mathbf{x}$ and parameter $\beta$.
+
+The next question is where to get $\lambda_0(t)$. A weibull model
 
 ### Hazard regression
 To turn this into a regression problem, we need a way to modulate the positive
@@ -275,47 +275,6 @@ The `ns` function from the *splines* package
 creates a basis matrix representing piecewise polynomial curve
 segments. The collection of curve segments created by `ns` has many desirable
 properties such as continuity and linearity outside of the range of the data. The `df` parameter controls the number of "knots," or the places where the piecewise curves meet, and thus amount of smoothing. The reader is encouraged
-to try higher and lower values.
-
-```{r}
-surv_spline <- lm(H ~ ns(t, df = 12), data = haz_df)
-haz_df$surv_spline <- surv_spline$fitted
-
-ggplot(haz_df, aes(y = H, x = t)) +
-  geom_point(size = 2) +
-  ggtitle("Estimated cumulative hazard with spline fit") +
-  labs(x = "t", y = expression(hat(H)(italic(t)))) + 
-  geom_line(color = "red", size = 1, aes(x = t, y = surv_spline)) + 
-  theme_gdocs() +
-  theme(legend.position = "none",
-        plot.title      = element_text(size = 16, hjust = 0.5),
-        axis.text       = element_text(size = 14), 
-        axis.title      = element_text(size = 14))
-```
-
-It's time to see the hazard. First we'll use our spline-based representation of
-the cumulative hazard to interpolate $\hat{H}(t)$ along our $\delta$-spaced
-grid. Next we'll difference the smoothed estimate and divide by the length
-of the interval ($\delta$) to get the approximate derivative.
-```{r}
-grid_df <- data.frame(t = t_seq)
-grid_df$H <- predict(surv_spline, newdata = grid_df)
-
-diff_df <- data.frame(H_diff = diff(grid_df$H) / delta, t = t_seq[-1],
-                      baseline_hazard = baseline_hazard[-1])
-ggplot(diff_df, aes(y = H_diff, x = t)) +
-  geom_line(size = 2.5, color = "grey") +
-  ggtitle("Smoothed hazard estimate vs truth") +
-  labs(x = "t", y = expression(hat(lambda[0])(italic(t)))) + 
-  geom_line(color = 'red', size = 1, aes(x = t, y = baseline_hazard)) + 
-  theme_gdocs() +
-  theme(legend.position = "none",
-        plot.title      = element_text(size = 16, hjust = 0.5),
-        axis.text       = element_text(size = 14), 
-        axis.title      = element_text(size = 14))
-```
-
-The true baseline hazard is overlaid above in red. Our estimate is not perfect,
 but we've recovered the basic sinusoidal shape with only 1000 observations,
 roughly a quarter of which have been censored.
 
