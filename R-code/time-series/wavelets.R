@@ -44,9 +44,6 @@ x<- seq(-1.5, 2.5, .01)
 #Plot the Daubechies wavelet
 plot( -c1*phi(2*x,9) + c0*phi(2*x-1,9) - c3*phi(2*x-2,9) + c2*phi(2*x-3,9) ~ x, type = "l", main = "Daubeches Wavelet")
   
-  
-
-
 
 rm(list = ls())
 library(wavelets)
