@@ -15,78 +15,79 @@
 #
 # with epsilon_t, zi_t, and omega_t iid normal with separate error components
 #
-# What this means is that, without noise:
-#
-# period 1's effect is gamma_1
-# period 2's effect is -gamma_1 - gamma_2 - gamma_3
-# period 3's effect is gamma_3
-# period 4's effect is gamma_2
-
-# So for 4 periods with profile (+5, +15, -8, -12), the gamma profile would be
-# gamma_1 = 5
-# gamma_2 = -12 
-# gamma_3 = -8 
+# So for 4 periods with a mean of 18 and a seasonal profile of
+# (+5, +15, -8, -12), the initial state for period 1 would be
+# (18, 5, -12, -8), for which applying the recurrence relation again would
+# yield (18, 15, 5, -12), and so forth.
 
 library(MASS)
 
-alpha_mat <- matrix(rep(0, 4 * 12), ncol = 4)
-
-T <- matrix(c(1,  0,  0,  0,
+# State Transition Matrix
+F <- matrix(c(1,  0,  0,  0,
               0, -1, -1, -1,
               0,  1,  0,  0,
               0,  0,  1,  0), byrow = TRUE, ncol = 4)
 
-sigma_epsilon <- 8.0 # affects the measurement error
-sigma_xi <- 4 # affects the local level
-sigma_omega <- 4 # affects the seasonality
+sigma_epsilon <- 2.0 # affects the measurement error
+sigma_xi <- 1 # affects the local level
+sigma_omega <- 1 # affects the seasonality
 
-H <- matrix(sigma_epsilon ^ 2)
+# Observation Model Matrix
+H <- matrix(c(1, 1, 0, 0), ncol = 4)
 
+# Covariance Matrix of the Process Noise
 Q <- diag(c(sigma_xi ^ 2, sigma_omega ^ 2, 0.0, 0.0))
 
-R <- matrix(c(1, 0, 0, 0,
-              0, 1, 0, 0,
-              0, 0, 0, 0,
-              0, 0, 0, 0), byrow = TRUE, ncol = 4)
+# Covariance Matrix of the Observation Noise
+R <- matrix(sigma_epsilon ^ 2)
 
-alpha <- c(20, 5, -12, -8) # initial value
+# Storing the state x in a matrix
+x_mat <- matrix(rep(0, 4 * 12), ncol = 4)
 
-alpha_mat[1, ] <- alpha
+x <- c(18, 5, -12, -8) # initial value, corresponding to 18 + 5 (period 1)
+x_mat[1, ] <- x + mvrnorm(1, rep(0, 4), Q) # True initial state plus noise
+
 for (t in 2:12) {
-  alpha <- T %*% alpha + R %*% mvrnorm(1, 0 * alpha, Q)
-alpha_mat[t, ] <- alpha
+  w <- mvrnorm(1, rep(0, 4), Q)
+  x <- F %*% x + w
+x_mat[t, ] <- x
 }
 
-Z <- matrix(c(1, 1, 0, 0), ncol = 4)
-
-noise <- sigma_epsilon * rnorm(12)
-signal <- alpha_mat %*% t(Z)
-y <- signal + noise 
+v <- rnorm(12, 0, sigma_epsilon)
+y <- x_mat %*% t(H) + v 
 plot(y ~ c(1:12), type = 'b', ylim = c(-5, 45))
 
+write.csv(y, "C:/devl/test-series.csv", row.names = FALSE)
 # Performing Kalman Filter
-
 
 a_mat <- matrix(rep(0, 4 * 12), ncol = 4)
 
-a <- c(18, 5, -12, -8) # initial value
-P <- 1 * diag(c(.01, .01, 0.01, 0.01))
+x <- c(18.0, 5, -12, -8) # initial value, corresponds to period 1
+P <- 1.0 * diag(c(1, 1, 1, 1)) # initial value of covariance matrix
 
-a_mat[1, ] <- a
-
-for (t in 2:12) {
-  v <- y[t - 1] - Z %*% a # set to 0 for fcast
-  F <- Z %*% P %*% t(Z) + H
-  K <- T %*% P %*% t(Z) %*% solve(F) # optimal Kalman Gain, set to 0 for fcast
-  L <- T - K %*% Z # used only in covariance update
-  
-  a <- T %*% a + K %*% v
-  P <- T %*% P %*% t(L) + R %*% Q %*% t(R)
-  
-  a_mat[t, ] <- a
+update <- function(x_apriori, P_apriori, z) {
+  S <- R + H %*% P_apriori %*% t(H) # Innovation Covariance
+  K <- P_apriori %*% t(H) %*% solve(S) # optimal Kalman Gain (SEL)
+  y <- z - H %*% x_apriori 
+  x_apost <- x_apriori + K %*% y
+  P_apost <- P_apriori - K %*% H %*% t(P_apriori)
+  return(list(x = x_apost, P = P_apost))
 }
 
-recovered_signal <- a_mat %*% t(Z)
+predict <- function(x_prev, P_prev) {
+  x_next <- F %*% x_prev
+  P_next <- F %*% P_prev %*% t(F) + Q
+  return(list(x = x_next, P = P_next))
+}
+
+aposteriori <- update(x, P, y[1])
+apriori_next <- predict(aposteriori$x, aposteriori$P)
+
+
+# Stopped at this point
+
+
+recovered_signal <- a_mat %*% t(H)
 
 plot(signal ~ c(1:12), type = "b")
 lines(recovered_signal ~ c(1:12), type = "b", col = "blue")
