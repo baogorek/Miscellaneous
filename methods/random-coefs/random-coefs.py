@@ -63,30 +63,34 @@ unit_onehot = unit_onehot.toarray() # random intercepts design
 unit_x = np.dot(np.diag(test_df['x']), unit_onehot) # random coefs design
 
 n_units = unit_onehot.shape[1]
-lambda_int = .07
-lambda_x = .04
 
 
-input_slr = Input(shape = (1,)) # alpha_bar (bias) and beta_bar (weight)
-input_units_int = Input(shape = (n_units,)) 
-input_units_x = Input(shape = (n_units,)) 
+def create_model(lambda_int, lambda_x):
 
-slr_dense = Dense(1, use_bias = True)(input_slr)
-units_int_dense = Dense(1, use_bias = False,
-                        kernel_regularizer = l2(lambda_int))(input_units_int)
-units_x_dense = Dense(1, use_bias = False,
-                      kernel_regularizer = l2(lambda_x))(input_units_x)
-
-output_layer = Add()([slr_dense, units_int_dense, units_x_dense])
-
-re_model = Model(inputs = [input_slr, input_units_int, input_units_x],
-                 outputs = output_layer)
-
-re_model.compile(loss = 'mean_squared_error', optimizer = "sgd")
-
-re_model.fit([test_df["x"], unit_onehot, unit_x], test_df["y"],
-             epochs = 4000, batch_size = 450)
-
+  #lambda_int = .07
+  #lambda_x = .04
+  
+  input_slr = Input(shape = (1, )) # alpha_bar (bias) and beta_bar (weight)
+  input_units_int = Input(shape = (n_units,)) 
+  input_units_x = Input(shape = (n_units,)) 
+  
+  slr_dense = Dense(1, use_bias = True)(input_slr)
+  units_int_dense = Dense(1, use_bias = False,
+                          kernel_regularizer = l2(lambda_int))(input_units_int)
+  units_x_dense = Dense(1, use_bias = False,
+                        kernel_regularizer = l2(lambda_x))(input_units_x)
+  
+  output_layer = Add()([slr_dense, units_int_dense, units_x_dense])
+  
+  re_model = Model(inputs = [input_slr, input_units_int, input_units_x],
+                   outputs = output_layer)
+  
+  re_model.compile(loss = 'mean_squared_error', optimizer = "sgd")
+  
+  #re_model.save_weights('re_model_weights.h5')
+  
+  return re_model
+ 
 wts = re_model.get_weights()
 beta_bar = wts[0]
 alpha_bar = wts[1]
@@ -103,16 +107,33 @@ np.var(unit_i)
 
 # For cross validation, here is what I can use:
 from sklearn.model_selection import StratifiedKFold
-X = np.array([[1, 2], [3, 4], [1, 2], [3, 4]])
-y = np.array([0, 0, 1, 1])
-skf = StratifiedKFold(n_splits=2)
-skf.get_n_splits(X, y)
+from pyDOE import ccdesign
 
-print(skf)  
+design = ccdesign(2, face='ccf')
+design[:, 0] = design[:, 0] * .3 + .3 
+design[:, 1] = design[:, 1] * .3 + .3 
 
-for train_index, test_index in skf.split(X, y):
-   print("TRAIN:", train_index, "TEST:", test_index)
-   X_train, X_test = X[train_index], X[test_index]
-   y_train, y_test = y[train_index], y[test_index]
+skf = StratifiedKFold(n_splits=5, shuffle=True)
 
-# There is also a Repeated version
+cv_results = []
+for i in range(design.shape[0]):
+  lambda_int, lambda_x = design[i, :]
+  val_losses = []
+  for train_index, test_index in skf.split(unit_x, test_df['unit']):
+     #print("TRAIN:", train_index, "TEST:", test_index)
+     #re_model.load_weights('re_model_weights.h5')
+     re_model = create_model(lambda_int, lambda_x)
+  
+     X_train = [test_df["x"][train_index], unit_onehot[train_index],
+                unit_x[train_index]]
+     X_test = [test_df["x"][test_index], unit_onehot[test_index],
+                unit_x[test_index]]
+  
+     y_train, y_test = test_df["y"][train_index], test_df["y"][test_index] 
+     h = re_model.fit(X_train, y_train,
+                      epochs = 1500, batch_size = 450,
+                      validation_data = (X_test, y_test))
+     val_losses.append(np.min(h.history['val_loss']))
+  
+  cv_results.append(np.mean(val_losses))
+
