@@ -11,7 +11,12 @@ from keras.layers import Input, Dense, concatenate, Add
 from keras.models import Model
 from keras.regularizers import l1, l2
 
+from keras.callbacks import ModelCheckpoint, EarlyStopping
+
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import StratifiedKFold
+
+run utils.py
 
 test_df = pd.read_csv("C:/devl/re_test.csv")
 
@@ -55,6 +60,8 @@ slr_model.get_weights()
 
 ## Second, trying to simulate the random effects modeling
 
+from keras.optimizers import SGD
+
 enc = OneHotEncoder()
 enc.fit(test_df['unit'].values.reshape(-1, 1))
 unit_onehot = enc.transform(test_df['unit'].values.reshape(-1, 1))
@@ -64,33 +71,12 @@ unit_x = np.dot(np.diag(test_df['x']), unit_onehot) # random coefs design
 
 n_units = unit_onehot.shape[1]
 
+# Test the model out
+re_model = create_model(.01, .01, .001, 0, .9) 
+X_all = [test_df["x"], unit_onehot, unit_x]
+y_all = test_df["y"]
+re_model.fit(X_all, y_all, epochs = 1500, batch_size = 450)
 
-def create_model(lambda_int, lambda_x):
-
-  #lambda_int = .07
-  #lambda_x = .04
-  
-  input_slr = Input(shape = (1, )) # alpha_bar (bias) and beta_bar (weight)
-  input_units_int = Input(shape = (n_units,)) 
-  input_units_x = Input(shape = (n_units,)) 
-  
-  slr_dense = Dense(1, use_bias = True)(input_slr)
-  units_int_dense = Dense(1, use_bias = False,
-                          kernel_regularizer = l2(lambda_int))(input_units_int)
-  units_x_dense = Dense(1, use_bias = False,
-                        kernel_regularizer = l2(lambda_x))(input_units_x)
-  
-  output_layer = Add()([slr_dense, units_int_dense, units_x_dense])
-  
-  re_model = Model(inputs = [input_slr, input_units_int, input_units_x],
-                   outputs = output_layer)
-  
-  re_model.compile(loss = 'mean_squared_error', optimizer = "sgd")
-  
-  #re_model.save_weights('re_model_weights.h5')
-  
-  return re_model
- 
 wts = re_model.get_weights()
 beta_bar = wts[0]
 alpha_bar = wts[1]
@@ -101,39 +87,34 @@ beta_i = (beta_bar + b_i).reshape(-1)
 unit_i = (alpha_bar + u_i).reshape(-1)
 
 # Very poor man's variance components
-
 np.var(beta_i)
 np.var(unit_i)
 
-# For cross validation, here is what I can use:
-from sklearn.model_selection import StratifiedKFold
-from pyDOE import ccdesign
 
-design = ccdesign(2, face='ccf')
-design[:, 0] = design[:, 0] * .3 + .3 
-design[:, 1] = design[:, 1] * .3 + .3 
 
-skf = StratifiedKFold(n_splits=5, shuffle=True)
+# Trying a conjugate gradient approach
+f_step = np.array([.02, .025]) # Will be different for every combo of vars!
+line_step = .01
 
-cv_results = []
-for i in range(design.shape[0]):
-  lambda_int, lambda_x = design[i, :]
-  val_losses = []
-  for train_index, test_index in skf.split(unit_x, test_df['unit']):
-     #print("TRAIN:", train_index, "TEST:", test_index)
-     #re_model.load_weights('re_model_weights.h5')
-     re_model = create_model(lambda_int, lambda_x)
+point = np.array([.05, .04])
+data = (test_df, unit_onehot, unit_x)
+direction = get_direction(point, f_step, data)
+
+stop_flag = False
+while stop_flag == False:
+
+  design = np.array(point + direction * line_step)
+  for i in range(2, 5):
+      design = np.vstack([design, point + direction * line_step * i])
   
-     X_train = [test_df["x"][train_index], unit_onehot[train_index],
-                unit_x[train_index]]
-     X_test = [test_df["x"][test_index], unit_onehot[test_index],
-                unit_x[test_index]]
-  
-     y_train, y_test = test_df["y"][train_index], test_df["y"][test_index] 
-     h = re_model.fit(X_train, y_train,
-                      epochs = 1500, batch_size = 450,
-                      validation_data = (X_test, y_test))
-     val_losses.append(np.min(h.history['val_loss']))
-  
-  cv_results.append(np.mean(val_losses))
+  cv_results = get_cv_results(design, (test_df, unit_onehot, unit_x))
+  print cv_results  
+  if cv_results[-1] > np.min(cv_results): # something better earlier
+      stop_flag = True
+      point = np.argmin(cv_results)
+      print("point has changed to %s" % str(point))
+  else:
+      point = design[-1]
+      print("point has changed to %s" % str(point))
+
 
