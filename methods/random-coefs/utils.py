@@ -13,7 +13,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 # For cross validation, here is what I can use:
 callbacks = [
   EarlyStopping(monitor='val_loss',
-                                min_delta=0.00001, patience=20,
+                                min_delta=0.000001, patience=60,
                                 verbose=1, mode='auto') #,
   #ModelCheckpoint('model_checkpoint.h5', monitor='val_loss',
   #                 verbose=1, save_best_only=True,
@@ -54,41 +54,75 @@ def create_model(n_units, lambda_int, lambda_x, lr, decay, momentum):
   return re_model
 
 
-def get_cv_results(design, data):
+def get_cv_results(design, data, cv_splits=10):
   test_df, unit_onehot, unit_x = data
-  skf = StratifiedKFold(n_splits=3, shuffle=True)
   cv_results = []
   for i in range(design.shape[0]):
     lambda_int, lambda_x = design[i, :]
     val_losses = []
-    for train_index, test_index in skf.split(unit_x, test_df['unit']):
-       re_model = create_model(unit_onehot.shape[1], lambda_int, lambda_x,
-                               .01, .0001, .92)
+    for rep in range(3): # Almost like bootstrap. Reshuffling
+      
+      cv_val_losses = []
+      skf = StratifiedKFold(n_splits=10, shuffle=True)
+      for train_index, test_index in skf.split(unit_x, test_df['unit']):
+         re_model = create_model(unit_onehot.shape[1], lambda_int, lambda_x,
+                                 .01, .0001, .92)
 
-       X_train = [test_df["x"][train_index], unit_onehot[train_index],
-                  unit_x[train_index]]
-       X_test = [test_df["x"][test_index], unit_onehot[test_index],
-                  unit_x[test_index]]
+         X_train = [test_df["x"][train_index], unit_onehot[train_index],
+                    unit_x[train_index]]
+         X_test = [test_df["x"][test_index], unit_onehot[test_index],
+                    unit_x[test_index]]
 
-       y_train, y_test = test_df["y"][train_index], test_df["y"][test_index]
-       h = re_model.fit(X_train, y_train,
-                        epochs = 15000, batch_size = 450,
-                        validation_data = (X_test, y_test),
-                        callbacks = callbacks)
+         y_train, y_test = test_df["y"][train_index], test_df["y"][test_index]
+         h = re_model.fit(X_train, y_train,
+                          epochs = 15000, batch_size = 450,
+                          validation_data = (X_test, y_test),
+                          callbacks = callbacks, verbose = 0)
+         cv_val_losses.append(np.min(h.history['val_loss']))
 
-       val_losses.append(np.min(h.history['val_loss']))
-
-    cv_results.append(np.mean(val_losses))
+      val_losses.append(np.mean(cv_val_losses))
+    cv_results.append(np.mean(val_losses)) 
   return cv_results
 
+def enforce_boundary_1d(position, step, boundaries):
+  proposal = position + step 
+  while proposal < boundaries[0] or proposal > boundaries[1]:
+      step = step / 2.0
+      proposal = position + step 
+      print("oob. decreasing step size")
+  return proposal
 
-def get_direction(point, f_step, data):
+def enforce_boundary_2d(position, direction, step, boundaries):
+  proposal = position + direction * step
+  out_of_bounds1 = (boundaries[0][0] > proposal[0] or
+                    proposal[0] > boundaries[0][1])
+  out_of_bounds2 = (boundaries[1][0] > proposal[1] or
+                    proposal[1] > boundaries[1][1])
+  while out_of_bounds1 or out_of_bounds2:
+    step = step / 2.0
+    proposal = position + direction * step
+    out_of_bounds1 = (boundaries[0][0] > proposal[0] or
+                      proposal[0] > boundaries[0][1])
+    out_of_bounds2 = (boundaries[1][0] > proposal[1] or
+                      proposal[1] > boundaries[1][1])
+    print("oob. decreasing step size")
+  
+  return proposal
+
+#position = np.array([1,1])
+#direction = np.array([1, 1])
+#step = .5
+#boundaries = np.array([[0, 2], [0, 2]])
+
+def get_direction(point, f_step, data, boundaries):
   design = ff2n(2)
-  design[:, 0] = factor_to_value(design[:, 0], point[0] - f_step[0],
-                                 point[0] + f_step[0])
-  design[:, 1] = factor_to_value(design[:, 1], point[1] - f_step[1],
-                                 point[1] + f_step[1])
-
+  design[:, 0] = factor_to_value(design[:, 0],
+       enforce_boundary_1d(point[0], - f_step[0], boundaries[0]),
+       enforce_boundary_1d(point[0], f_step[0], boundaries[0]))
+  design[:, 1] = factor_to_value(design[:, 1],
+        enforce_boundary_1d(point[1], -f_step[1], boundaries[1]),
+        enforce_boundary_1d(point[1],f_step[1], boundaries[1]))
+  print(design)
   cv_results = get_cv_results(design, data)
   res_df = np.transpose(np.vstack([design[ :, 0], design[:, 1],
                                   np.array(cv_results)]))
@@ -101,5 +135,5 @@ def get_direction(point, f_step, data):
   res.summary()
 
   direction = np.array([res.params["x1"], res.params["x2"]])
-  return direction
+  return (direction / np.linalg.norm(direction))
 

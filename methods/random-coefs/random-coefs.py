@@ -16,7 +16,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import StratifiedKFold
 
-run utils.py
+%run utils.py
 
 test_df = pd.read_csv("C:/devl/re_test.csv")
 
@@ -46,22 +46,6 @@ mdf2.summary()
 
 # Stage2: Trying to get it to work with keras
 
-## First, a simple linear regression
-input_x = Input(shape = (1,)) # Batches of 1-d vectors (scalars)
-
-lin_fn = Dense(1, use_bias = True)(input_x)
-
-slr_model = Model(input = input_x, output = lin_fn)
-slr_model.compile(loss = 'mean_squared_error', optimizer = "sgd")
-
-slr_model.fit(test_df["x"], test_df["y"], epochs = 1000, batch_size = 100)
-
-slr_model.get_weights()
-
-## Second, trying to simulate the random effects modeling
-
-from keras.optimizers import SGD
-
 enc = OneHotEncoder()
 enc.fit(test_df['unit'].values.reshape(-1, 1))
 unit_onehot = enc.transform(test_df['unit'].values.reshape(-1, 1))
@@ -72,10 +56,11 @@ unit_x = np.dot(np.diag(test_df['x']), unit_onehot) # random coefs design
 n_units = unit_onehot.shape[1]
 
 # Test the model out
-re_model = create_model(.01, .01, .001, 0, .9) 
+re_model = create_model(n_units, .006, .1, .001, 0, .9) 
 X_all = [test_df["x"], unit_onehot, unit_x]
 y_all = test_df["y"]
-re_model.fit(X_all, y_all, epochs = 1500, batch_size = 450)
+h = re_model.fit(X_all, y_all, epochs = 5500, batch_size = 450)
+y_pred = re_model.predict(X_all).flatten()
 
 wts = re_model.get_weights()
 beta_bar = wts[0]
@@ -86,35 +71,52 @@ b_i = wts[3]
 beta_i = (beta_bar + b_i).reshape(-1)
 unit_i = (alpha_bar + u_i).reshape(-1)
 
-# Very poor man's variance components
-np.var(beta_i)
-np.var(unit_i)
-
-
+# Poor man's variance components
+np.std(beta_i)
+np.std(unit_i)
+np.std(y_all - y_pred)
 
 # Trying a conjugate gradient approach
-f_step = np.array([.02, .025]) # Will be different for every combo of vars!
-line_step = .01
 
-point = np.array([.05, .04])
+region = np.array([[0, 1000], [0, 1000]])
+f_step = np.array([1, 1]) # Will be different for every combo of vars!
+line_step = 1
+
+results_df = pd.DataFrame()
+
+point = np.array([100, 25])
 data = (test_df, unit_onehot, unit_x)
-direction = get_direction(point, f_step, data)
+direction = get_direction(point, f_step, data, region)
 
+#points_tested = np.array([])
+line_step = line_step * .75
 stop_flag = False
 while stop_flag == False:
 
-  design = np.array(point + direction * line_step)
+  design = enforce_boundary_2d(point, direction, line_step, region)
+  #np.array(point + direction * line_step)
   for i in range(2, 5):
-      design = np.vstack([design, point + direction * line_step * i])
+      design = np.vstack([design, enforce_boundary_2d(point, direction,
+                                                      line_step * i, region)])
+
+      #design, point + direction * line_step * i])
   
   cv_results = get_cv_results(design, (test_df, unit_onehot, unit_x))
-  print cv_results  
+  results_df = pd.concat([results_df, pd.DataFrame(np.hstack([design,
+                          np.array(cv_results).reshape(-1, 1)]))])
   if cv_results[-1] > np.min(cv_results): # something better earlier
       stop_flag = True
-      point = np.argmin(cv_results)
-      print("point has changed to %s" % str(point))
+      point = design[np.argmin(cv_results), :]
+      print("Found minimum. Point has changed to %s" % str(point))
   else:
       point = design[-1]
-      print("point has changed to %s" % str(point))
+      print("Continuing Line Search. point has changed to %s" % str(point))
 
+# TODO: Implement f_step decay
+# TODO; some kind of visual to show where point is moving
+f_step = f_step * .75
+new_direction = get_direction(point, f_step, data, region)
+
+direction = new_direction + direction
+direction = direction / np.linalg.norm(direction)
 
