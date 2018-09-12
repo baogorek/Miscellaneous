@@ -1,7 +1,3 @@
-# https://seekingalpha.com/article/4085454-shiller-cape-ratio-misleading-right-now
-
-# https://us.spindices.com/documents/additional-material/sp-500-eps-est.xlsx
-
 library(rvest)
 library(ggplot2)
 library(ggthemes)
@@ -38,7 +34,7 @@ prices_table <- prices_table[prices_table$date <= "2018-01-01", ]
 
 # S&P price as of Sept 7, recording its value for 2019
 prices_table <- rbind(data.frame(date = as.Date("2019-01-01"),
-                                 price = 2871.68), prices_table)
+                                 price = 3000), prices_table)
 
 pe_table <- merge(prices_table, earnings_table, by = "date")
 pe_table <- pe_table[order(pe_table$date), ]
@@ -70,7 +66,7 @@ pe_table[pe_table$date == "2019-01-01", "size"] <- 2
 ggplot(pe_table, aes(x = date, y = price_to_earnings_ma10)) + 
   geom_line(size = .8, color = "grey", linetype = 2) +
   geom_point(colour = pe_table$col, size = pe_table$size) +
-  ggtitle("Historical CAPE Ratio of S&P 500, 10-year earnings average") +
+  ggtitle("Historical CAPE of S&P 500 using 10-yr earnings average") +
   labs(x = "Date", y = "Price to earnings (July 2018 dollars)") +
   annotate("text", x = as.Date('1929-01-01'), y = 28,
            label = "Black Tuesday", size = 2.5, colour = "black") +
@@ -85,7 +81,7 @@ ggplot(pe_table, aes(x = date, y = price_to_earnings_ma10)) +
 ggplot(pe_table, aes(x = date, y = price_to_earnings)) + 
   geom_line(size = .8, color = "grey", linetype = 2) +
   geom_point(colour = pe_table$col, size = pe_table$size) +
-  ggtitle("Historical Price to Earnings of S&P 500") + 
+  ggtitle("Historical PE of S&P 500") + 
   labs(x = "Date", y = "Price to earnings (July 2018 dollars)") +
   annotate("text", x = as.Date('1929-01-01'), y = 28,
            label = "Black Tuesday", size = 2.5, colour = "black") +
@@ -99,7 +95,7 @@ ggplot(pe_table, aes(x = date, y = price_to_earnings)) +
 ggplot(pe_table, aes(x = date, y = price_to_earnings_ma7)) + 
   geom_line(size = .8, color = "grey", linetype = 2) +
   geom_point(colour = pe_table$col, size = pe_table$size) +
-  ggtitle("Historical CAPE Ratio of S&P 500, 7-year earnings average") + 
+  ggtitle("Historical CAPE of S&P 500, 7-yr earnings average") + 
   labs(x = "Date", y = "Price to earnings (July 2018 dollars)") +
   annotate("text", x = as.Date('1929-01-01'), y = 28,
            label = "Black Tuesday", size = 2.5, colour = "black") +
