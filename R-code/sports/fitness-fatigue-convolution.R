@@ -49,7 +49,7 @@ fatigue <- sapply(1:nrow(train_df),
                   function(n) convolve_training(train_df$w, n, 13)) 
 
 perf <- 496 + .069 * fitness - .27 * fatigue + 2 * rnorm(nrow(train_df))
-
+train_df$perf <- perf
 
 plot(perf ~ train_df$day)
 plot(fitness)
@@ -103,6 +103,7 @@ total <- sapply(1:nrow(train_df),
 plot(496 + total ~ train_df$day) # yep, it works
 
 # Next step is to "cheat" and get a set of knots that will lead to good approx
+# Construct a spline
 library(splines)
 my_spline <- ns(1:259, Boundary.knots = c(1, 259), knots = c(14, 40, 100))
 output <- combined_fn(1:259)
@@ -111,8 +112,29 @@ my_lm <- lm(output ~ my_spline)
 plot(output ~ c(1:259))
 lines(predict(my_lm) ~ c(1:259), col = "blue") # Not bad!
 
+# Now let's create the regression
+delta_t <- train_df$day[2] - train_df$day[1] # TODO: what if there's missing d?
 
+# Confusing: n is also day
+new_vars <- list()
+for (n in 1:nrow(train_df)) { # looping through rows of data set
+  spline_arg <- (n - 1:n - 1) * delta_t # n, n - 1, ..., 1 times delta_t
+  spline_pred <- predict(my_spline, newx = spline_arg)
+  spline_vars <- colSums(spline_pred * train_df$w) # convolution
+  spline_const <- sum(train_df$w * delta_t)
+  new_vars[[n]] <- c(spline_const, spline_vars)
+}
 
+new_vars_df <- Reduce(rbind.data.frame, new_vars)
+names(new_vars_df) <- paste0("z_", 1:ncol(new_vars_df))
 
+train_df <- cbind(train_df, new_vars_df)
+
+spline_reg <- lm(perf ~ z_1 + z_2 + z_3 + z_4 + z_5, data = train_df)
+summary(spline_reg)
+
+spline_recon <- coef(spline_reg)[2] + my_spline %*% coef(spline_reg)[3:6]
+plot(combined_fn(1:259) ~ c(1:259))
+lines(spline_recon ~ c(1:259), col = "red")
 
 
