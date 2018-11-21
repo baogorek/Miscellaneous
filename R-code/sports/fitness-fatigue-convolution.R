@@ -38,7 +38,7 @@ s <- 5
 training <- train_df$w
 
 convolve_training <- function(training, n, tau) {
-  sum(training[1:(n - 1)] * exp_decay((n - 1):1, tau) 
+  sum(training[1:(n - 1)] * exp_decay((n - 1):1, tau))
 }
 
 
@@ -48,12 +48,71 @@ fitness <- sapply(1:nrow(train_df),
 fatigue <- sapply(1:nrow(train_df),
                   function(n) convolve_training(train_df$w, n, 13)) 
 
-perf <- 496 + .069 * fitness - .27 * fatigue
+perf <- 496 + .069 * fitness - .27 * fatigue + 2 * rnorm(nrow(train_df))
 
 
 plot(perf ~ train_df$day)
 plot(fitness)
 plot(fatigue ~ train_df$day, col = "blue", main = "fatigue")
 lines(train_df$w ~ train_df$day, type = "b", cex = .5, col = "green")
+
+# Recover parameters using non-linear regression
+
+rss <- function(theta) {
+  int <- theta[1]
+  k1 <- theta[2] # fitness
+  k2 <- theta[3]
+  tau1 <- theta[4] # fitness
+  tau2 <- theta[5]
+
+  fitness <- sapply(1:nrow(train_df),
+                    function(n) convolve_training(train_df$w, n, tau1)) 
+
+  fatigue <- sapply(1:nrow(train_df),
+                   function(n) convolve_training(train_df$w, n, tau2)) 
+
+  perf_hat <- int + k1 * fitness - k2 * fatigue
+  return(sum((perf - perf_hat) ^ 2))
+}
+
+ 
+optim_results <- optim(c(400, .05, .15, 20, 5), rss, method = "BFGS",
+                       hessian = TRUE, control = list(maxit = 1000))
+print(optim_results)
+sqrt(diag(solve(optim_results$hessian)))
+
+
+# Implement Spline Regression approach
+
+# The ultimate convolving function for the training data is:
+combined_fn <- function(t) {
+  0.069 * exp_decay(t, 60) - 0.27 * exp_decay(t, 13)
+}
+
+plot(combined_fn(1:259) ~ c(1:259))
+
+# First, a check to make sure convolving with this one fn acutally works
+convolve_training2 <- function(training, n) {
+  sum(training[1:(n - 1)] * combined_fn((n - 1):1))
+}
+
+
+total <- sapply(1:nrow(train_df),
+                function(n) convolve_training2(train_df$w, n)) 
+
+plot(496 + total ~ train_df$day) # yep, it works
+
+# Next step is to "cheat" and get a set of knots that will lead to good approx
+library(splines)
+my_spline <- ns(1:259, Boundary.knots = c(1, 259), knots = c(14, 40, 100))
+output <- combined_fn(1:259)
+
+my_lm <- lm(output ~ my_spline)
+plot(output ~ c(1:259))
+lines(predict(my_lm) ~ c(1:259), col = "blue") # Not bad!
+
+
+
+
 
 
