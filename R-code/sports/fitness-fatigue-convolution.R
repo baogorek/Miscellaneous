@@ -1,8 +1,14 @@
 library(dplyr)
+library(splines)
+library(ggplot2)
+
+# TODO:
+1 . Extra covariate for that regression  feel
+2. More noise to a. intensities, b. performance
 
 # Best paper so far:
 
-#https://www.researchgate.net/profile/Robin_Candau/publication/15242395_Fatigue_and_fitness_modelled_from_the_effects_of_training_on_performance/links/55720f2608ae7536374cdc09/Fatigue-and-fitness-modelled-from-the-effects-of-training-on-performance.pdf
+# https://www.researchgate.net/profile/Robin_Candau/publication/15242395_Fatigue_and_fitness_modelled_from_the_effects_of_training_on_performance/links/55720f2608ae7536374cdc09/Fatigue-and-fitness-modelled-from-the-effects-of-training-on-performance.pdf
 
 # Article describing the Cp
 # https://www.researchgate.net/publication/20910238_Modeling_human_performance_in_running
@@ -11,36 +17,55 @@ library(dplyr)
 # 1. Up to day 147, training alternated between intensive and reduced, w_bar = 34
 # 2. Up to day 259, training was reduced to prepare for competition, w_bar = 24
 
-train_df <- data.frame(day = 1:259, day_of_week = 0:258 %% 7)
-train_df$w <- with(train_df, w <-
-    -24 * (day_of_week == 0) +
-   12 * (day_of_week == 1) +
-   8  * (day_of_week == 2) + 
-    0 * (day_of_week == 3) +
-    6 * (day_of_week == 4) +
-    -8 * (day_of_week == 5) +
-    6 * (day_of_week == 6))
-
-train_df$w <- train_df$w + ifelse(train_df$day <= 147, 34, 24)
-
 # To get the mean's right at 34 and 24, during first period, athlete
 # Almost rests on Sunday. During second period, complete rest on Sunday
 
-plot(train_df$w ~ train_df$day)
+train_df <- data.frame(day = 1:259, day_of_week = 0:258 %% 7)
+train_df$period <- ifelse(train_df$day <= 147, "build-up", "competition")
+train_df$w <- with(train_df, w <-
+  -24 * (day_of_week == 0) +
+   12 * (day_of_week == 1) +
+    8 * (day_of_week == 2) + 
+    0 * (day_of_week == 3) +
+    6 * (day_of_week == 4) +
+   -8 * (day_of_week == 5) +
+    6 * (day_of_week == 6))
 
+train_df$w <- rpois(nrow(train_df),
+                    train_df$w + ifelse(train_df$period == "build-up", 34, 24))
+
+mean(train_df$w[train_df$day <= 147])
+mean(train_df$w[train_df$day > 147])
+
+png("c:/devl/plots/training.png", width = 800, height = 480)
+ggplot(train_df, aes(x = day, y = w)) +
+  geom_bar(aes(fill = period), stat = "identity") +
+  ggtitle("Simulated daily training intensities for hammer thrower") +
+  xlab("Day") + ylab("Training intensity") +
+  theme(text = element_text(size = 16))
+dev.off()
+
+# Exponential decay and fitness-fatigue profiles
 exp_decay <- function(t, tau) {
   exp(-t / tau)
 }
 
-s <- 5
-# Go from 1 to 4
-# f(n-1), f(n-2), f(n-3), f(1)
-training <- train_df$w
+grid_df <- rbind(data.frame(day = 1:259, level = 400 * exp_decay(1:259, 13),
+                            type = "fatigue"),
+                 data.frame(day = 1:259, level = 100 * exp_decay(1:259, 60),
+                            type = "fitness"))
+
+png("c:/devl/plots/decay.png", width = 800, height = 480)
+ggplot(grid_df, aes(x = day, y = level)) +
+  geom_line(aes(color = type), size = 1.5) +
+  ggtitle("Responses of fitness and fatigue to training impulse") +
+  xlab("Day (n)") + ylab("Level of fitness or fatigue") +
+  theme(text = element_text(size = 16))
+dev.off()
 
 convolve_training <- function(training, n, tau) {
   sum(training[1:(n - 1)] * exp_decay((n - 1):1, tau))
 }
-
 
 fitness <- sapply(1:nrow(train_df),
                   function(n) convolve_training(train_df$w, n, 60)) 
@@ -48,10 +73,26 @@ fitness <- sapply(1:nrow(train_df),
 fatigue <- sapply(1:nrow(train_df),
                   function(n) convolve_training(train_df$w, n, 13)) 
 
-perf <- 496 + .069 * fitness - .27 * fatigue + 2 * rnorm(nrow(train_df))
-train_df$perf <- perf
+E_perf <- 496 + .07 * fitness - .27 * fatigue
 
-plot(perf ~ train_df$day)
+train_df$perf <- E_perf + 7.0 * rnorm(nrow(train_df))
+
+components_df <- rbind(
+  data.frame(level = .27 * fatigue, day = train_df$day, type = "fatigue"),
+  data.frame(level = .07 *fitness, day = train_df$day, type = "fitness"),
+  data.frame(level = E_perf - 496, day = train_df$day, type = "performance"))
+
+png("c:/devl/plots/components.png", width = 800, height = 480)
+ggplot(components_df, aes(x = day, y = level)) +
+  geom_line(aes(color = type), size = 1.5) +
+  ggtitle("Fitness, fatigue and performance relative to baseline") +
+  xlab("Day (n)") + ylab("Component level on performance scale") +
+  theme(text = element_text(size = 16))
+dev.off()
+
+
+
+plot(E_perf ~ train_df$day)
 plot(fitness)
 plot(fatigue ~ train_df$day, col = "blue", main = "fatigue")
 lines(train_df$w ~ train_df$day, type = "b", cex = .5, col = "green")
@@ -59,11 +100,11 @@ lines(train_df$w ~ train_df$day, type = "b", cex = .5, col = "green")
 # Recover parameters using non-linear regression
 
 rss <- function(theta) {
-  int <- theta[1]
-  k1 <- theta[2] # fitness
-  k2 <- theta[3]
-  tau1 <- theta[4] # fitness
-  tau2 <- theta[5]
+  int  <- theta[1] # performance baseline
+  k1   <- theta[2] # fitness weight
+  k2   <- theta[3] # fatigue weight
+  tau1 <- theta[4] # fitness decay
+  tau2 <- theta[5] # fatigue decay
 
   fitness <- sapply(1:nrow(train_df),
                     function(n) convolve_training(train_df$w, n, tau1)) 
@@ -86,7 +127,7 @@ sqrt(diag(solve(optim_results$hessian)))
 
 # The ultimate convolving function for the training data is:
 combined_fn <- function(t) {
-  0.069 * exp_decay(t, 60) - 0.27 * exp_decay(t, 13)
+  0.07 * exp_decay(t, 60) - 0.27 * exp_decay(t, 13)
 }
 
 plot(combined_fn(1:259) ~ c(1:259))
