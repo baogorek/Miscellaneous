@@ -2,23 +2,12 @@ library(dplyr)
 library(splines)
 library(ggplot2)
 
-# TODO:
-1 . Extra covariate for that regression  feel
-2. More noise to a. intensities, b. performance
-
 # Best paper so far:
 
 # https://www.researchgate.net/profile/Robin_Candau/publication/15242395_Fatigue_and_fitness_modelled_from_the_effects_of_training_on_performance/links/55720f2608ae7536374cdc09/Fatigue-and-fitness-modelled-from-the-effects-of-training-on-performance.pdf
 
 # Article describing the Cp
 # https://www.researchgate.net/publication/20910238_Modeling_human_performance_in_running
-
-# Facts about this hammer-thrower:
-# 1. Up to day 147, training alternated between intensive and reduced, w_bar = 34
-# 2. Up to day 259, training was reduced to prepare for competition, w_bar = 24
-
-# To get the mean's right at 34 and 24, during first period, athlete
-# Almost rests on Sunday. During second period, complete rest on Sunday
 
 train_df <- data.frame(day = 1:259, day_of_week = 0:258 %% 7)
 train_df$period <- ifelse(train_df$day <= 147, "build-up", "competition")
@@ -75,6 +64,7 @@ fatigue <- sapply(1:nrow(train_df),
 
 E_perf <- 496 + .07 * fitness - .27 * fatigue
 
+set.seed(45345)
 train_df$perf <- E_perf + 7.0 * rnorm(nrow(train_df))
 
 components_df <- rbind(
@@ -91,14 +81,7 @@ ggplot(components_df, aes(x = day, y = level)) +
 dev.off()
 
 
-
-plot(E_perf ~ train_df$day)
-plot(fitness)
-plot(fatigue ~ train_df$day, col = "blue", main = "fatigue")
-lines(train_df$w ~ train_df$day, type = "b", cex = .5, col = "green")
-
 # Recover parameters using non-linear regression
-
 rss <- function(theta) {
   int  <- theta[1] # performance baseline
   k1   <- theta[2] # fitness weight
@@ -110,16 +93,16 @@ rss <- function(theta) {
                     function(n) convolve_training(train_df$w, n, tau1)) 
 
   fatigue <- sapply(1:nrow(train_df),
-                   function(n) convolve_training(train_df$w, n, tau2)) 
+                    function(n) convolve_training(train_df$w, n, tau2)) 
 
   perf_hat <- int + k1 * fitness - k2 * fatigue
-  return(sum((perf - perf_hat) ^ 2))
+  return(sum((train_df$perf - perf_hat) ^ 2))
 }
 
  
 optim_results <- optim(c(400, .05, .15, 20, 5), rss, method = "BFGS",
                        hessian = TRUE, control = list(maxit = 1000))
-print(optim_results)
+print(optim_results$par)
 sqrt(diag(solve(optim_results$hessian)))
 
 
