@@ -2,13 +2,6 @@ library(dplyr)
 library(splines)
 library(ggplot2)
 
-# Best paper so far:
-
-# https://www.researchgate.net/profile/Robin_Candau/publication/15242395_Fatigue_and_fitness_modelled_from_the_effects_of_training_on_performance/links/55720f2608ae7536374cdc09/Fatigue-and-fitness-modelled-from-the-effects-of-training-on-performance.pdf
-
-# Article describing the Cp
-# https://www.researchgate.net/publication/20910238_Modeling_human_performance_in_running
-
 train_df <- data.frame(day = 1:259, day_of_week = 0:258 %% 7)
 train_df$period <- ifelse(train_df$day <= 147, "build-up", "competition")
 train_df$w <- with(train_df, w <-
@@ -74,8 +67,11 @@ components_df <- rbind(
 
 png("c:/devl/plots/components.png", width = 800, height = 480)
 ggplot(components_df, aes(x = day, y = level)) +
+  geom_col(data = train_df, aes(x = day, y = w), color = "grey", width = .2) +
   geom_line(aes(color = type), size = 1.5) +
-  ggtitle("Fitness, fatigue and performance relative to baseline") +
+  annotate("text", label = "training intensities", x = 70, y = 25,
+           color = "grey32", size = 6) +
+  ggtitle("Modeled fitness, fatigue and relative performance") +
   xlab("Day (n)") + ylab("Component level on performance scale") +
   theme(text = element_text(size = 16))
 dev.off()
@@ -160,5 +156,3 @@ summary(spline_reg)
 spline_recon <- coef(spline_reg)[2] + my_spline %*% coef(spline_reg)[3:6]
 plot(combined_fn(1:259) ~ c(1:259))
 lines(spline_recon ~ c(1:259), col = "red")
-
-
