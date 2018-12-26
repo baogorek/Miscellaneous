@@ -101,6 +101,34 @@ optim_results <- optim(c(400, .05, .15, 20, 5), rss, method = "BFGS",
 print(optim_results$par)
 sqrt(diag(solve(optim_results$hessian)))
 
+get_performance <- function(theta) {
+  int  <- theta[1] # performance baseline
+  k1   <- theta[2] # fitness weight
+  k2   <- theta[3] # fatigue weight
+  tau1 <- theta[4] # fitness decay
+  tau2 <- theta[5] # fatigue decay
+
+  fitness <- sapply(1:nrow(train_df),
+                    function(n) convolve_training(train_df$w, n, tau1))
+
+  fatigue <- sapply(1:nrow(train_df),
+                    function(n) convolve_training(train_df$w, n, tau2))
+
+  int + k1 * fitness - k2 * fatigue
+}
+                    
+train_df$perf_hat <- get_performance(optim_results$par)
+
+png("c:/devl/plots/overall.png", width = 800, height = 480)
+ggplot(train_df) +
+  geom_point(aes(x = day, y = perf)) +
+  geom_line(aes(x = day, y = perf_hat), color = "blue", size = .9) +
+  ggtitle("Performance, observed and modeled") +
+  xlab("Day (n)") + ylab("Performance") +
+  theme(text = element_text(size = 16))
+dev.off()
+
+
 
 # Implement Spline Regression approach
 
