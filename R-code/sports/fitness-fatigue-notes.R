@@ -2,6 +2,7 @@ library(dplyr)
 library(splines)
 library(ggplot2)
 
+set.seed(1523)
 train_df <- data.frame(day = 1:259, day_of_week = 0:258 %% 7)
 train_df$period <- ifelse(train_df$day <= 147, "build-up", "competition")
 train_df$w <- with(train_df, w <-
@@ -76,7 +77,6 @@ ggplot(components_df, aes(x = day, y = level)) +
   theme(text = element_text(size = 16))
 dev.off()
 
-
 # Recover parameters using non-linear regression
 rss <- function(theta) {
   int  <- theta[1] # performance baseline
@@ -94,7 +94,6 @@ rss <- function(theta) {
   perf_hat <- int + k1 * fitness - k2 * fatigue
   return(sum((train_df$perf - perf_hat) ^ 2))
 }
-
  
 optim_results <- optim(c(400, .05, .15, 20, 5), rss, method = "BFGS",
                        hessian = TRUE, control = list(maxit = 1000))
@@ -118,6 +117,8 @@ get_performance <- function(theta) {
 }
                     
 train_df$perf_hat <- get_performance(optim_results$par)
+write.csv(train_df, "c:/devl/data/train_df.csv", row.names = FALSE,
+          quote = FALSE)
 
 png("c:/devl/plots/overall.png", width = 800, height = 480)
 ggplot(train_df) +
@@ -128,8 +129,6 @@ ggplot(train_df) +
   theme(text = element_text(size = 16))
 dev.off()
 
-
-
 # Implement Spline Regression approach
 
 # The ultimate convolving function for the training data is:
@@ -137,7 +136,22 @@ combined_fn <- function(t) {
   0.07 * exp_decay(t, 60) - 0.27 * exp_decay(t, 13)
 }
 
-plot(combined_fn(1:259) ~ c(1:259))
+plot_df <- data.frame(day = 1:259, level = combined_fn(1:259),
+                      type = "true function")
+
+my_spline <- ns(1:259, Boundary.knots = c(1, 259), knots = c(14, 40, 100))
+my_lm <- lm(plot_df$level ~ my_spline)
+
+plot_df <- rbind(plot_df, data.frame(day = 1:259, level = predict(my_lm),
+                                     type = "spline approx"))
+
+png("c:/devl/plots/total-system-response.png", width = 800, height = 480)
+ggplot(plot_df, aes(x = day, y = level, color = type, linetype = type)) +
+  geom_line(size = 2) +
+  ggtitle("Total system impulse response for H.T.'s training") +
+  xlab("Day (n)") + ylab("Lag distribution value") +
+  theme(text = element_text(size = 16))
+dev.off()
 
 # First, a check to make sure convolving with this one fn acutally works
 convolve_training2 <- function(training, n) {
@@ -161,11 +175,46 @@ plot(output ~ c(1:259))
 lines(predict(my_lm) ~ c(1:259), col = "blue") # Not bad!
 
 # Now let's create the regression
-delta_t <- train_df$day[2] - train_df$day[1] # TODO: what if there's missing d?
+# Starting with evenly space time series, no missing vals. delta_t = 1
+# going for self-contained, only needs train_df to work
+library(splines)
+my_spline <- ns(1:259, Boundary.knots = c(1, 259), knots = c(14, 40, 100))
+
+z_vars <- list()
+for (n in 1:nrow(train_df)) {
+  spline_pred  <- predict(my_spline, newx = (n - 1):1)
+  spline_vars  <- colSums(spline_pred * train_df$w[1:(n - 1)]) # convolution
+  spline_const <- sum(train_df$w[1:(n - 1)])
+  z_vars[[n]]  <- c(spline_const, spline_vars)
+}
+
+z_vars_df <- Reduce(rbind.data.frame, z_vars)
+names(z_vars_df) <- paste0("z_", 1:ncol(z_vars_df))
+
+train_aug_df <- cbind(train_df, z_vars_df)
+
+spline_reg <- lm(perf ~ z_1 + z_2 + z_3 + z_4 + z_5, data = train_aug_df)
+summary(spline_reg)
+
+train_aug_df$perf_hat <- spline_reg$fitted
+
+png("c:/devl/plots/overall-again.png", width = 800, height = 480)
+ggplot(train_aug_df) +
+  geom_point(aes(x = day, y = perf)) +
+  geom_line(aes(x = day, y = perf_hat), color = "blue", size = .9) +
+  ggtitle("Performance, observed and modeled (v2)") +
+  xlab("Day (n)") + ylab("Performance") +
+  theme(text = element_text(size = 16))
+dev.off()
+
+
+
+# Regression variables for more general delta_t, but assumes they are all same
+delta_t <- train_df$day[2] - train_df$day[1]
 
 # Confusing: n is also day
 new_vars <- list()
-for (n in 1:nrow(train_df)) { # looping through rows of data set
+for (n in 1:nrow(train_df)) {
   spline_arg <- (n - 1:n - 1) * delta_t # n, n - 1, ..., 1 times delta_t
   spline_pred <- predict(my_spline, newx = spline_arg)
   spline_vars <- colSums(spline_pred * train_df$w) # convolution
