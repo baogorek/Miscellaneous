@@ -208,6 +208,68 @@ ggplot(train_aug_df) +
 dev.off()
 
 
+# Notes on the Cp performance variable discussed in Human Performance
+# Over time, performance can be observed to follow:
+# y = L + a exp(-t / b)
+# a: amplitude parameter (positive for running, negative for throwing)
+# b: time paramter
+# L: ultimate limit
+#
+# Suggests a transformation where you treat your performance as where
+# you are on the x-axis in approaching the limit
+# 
+# g(y) = b * ln(a / (y - L))
+# Get a & b through setting:
+# 1000 = g(world record performance)
+#    0 = g(able-bodied individual performance)
+
+# Solving this by writing in "fixed point" form:
+
+rss <- function(a, b, world_record_perf, able_bodied_perf, limit) {
+  (1000 - b * log(a / (world_record_perf - limit))) ** 2 +
+  (0    - b * log(a / (able_bodied_perf - limit))) ** 2
+}
+   
+
+optim_results <- optim(c(1, 1), function(params) rss(params[1], params[2],
+                                                     3.5, 15, 3.1))
+
+optim_results$par
+
+# Or, in one function:
+get_perf_a_and_b <- function(world_record_perf, able_bodied_perf, limit,
+                             type = "running") {
+  # sum of squares around fixed point
+  rss <- function(a, b, world_record_perf, able_bodied_perf, limit) {
+    (1000 - b * log(a / (world_record_perf - limit))) ** 2 +
+    (0    - b * log(a / (able_bodied_perf - limit))) ** 2
+  }
+ 
+  stopifnot(type %in% c("running", "jumping"))
+  a_starting <- ifelse(type == "running", 5, -5)
+  b_starting <- 100
+
+ optim_results <- optim(c(a_starting, b_starting),
+                        function(params) rss(params[1], params[2],
+                                             world_record_perf,
+                                             able_bodied_perf, limit))
+ optim_results$par
+}
+
+
+
+# The sport in the Kalman paper is a "semi-tethered swimming test" with varying
+# resistance among sets, so it's unlikely to be something I can look up
+# Solving nonlinear equations:
+# 1000 - b
+
+
+
+
+
+
+
+
 
 # Regression variables for more general delta_t, but assumes they are all same
 delta_t <- train_df$day[2] - train_df$day[1]
