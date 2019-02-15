@@ -6,12 +6,18 @@
 # Load for a day is intensity weighted training volume 
 # Performance: semi-tethered swimming test, three reps of 20 meters
 # conducted weekly
-# performance expressed in mean velocity reached for total of 60 meters
+# performance expressed in *mean velocity* reached for total of 60 meters
 
 # What I'm seeing in the data is that performance was tested at different
 # frequencies for different individual
 
-library(dplyr)
+# running function from fitness-fatigue-notes.R
+> get_perf_a_and_b(1.8, 0.8, 2.0, "jumping")
+[1]  -1.200109 558.072619
+
+get_perf_in_cp <- function(perf, a, b, limit) {
+  b * log(a / (perf - limit))
+}
 
 folder_path <- "c:/devl/swimming"
 
@@ -20,14 +26,20 @@ get_swimming_data <- function(subject_id, folder_path) {
   swimming_df <- read.table(file)
   swimming_df$day <- 1:nrow(swimming_df)
   names(swimming_df) <- c("training", "performance", "day")
+  swimming_df$performance <- ifelse(swimming_df$performance == 0, NA,
+                                    swimming_df$performance)
+
+  swimming_df$perf_cp <- get_perf_in_cp(swimming_df$perf, -1.0, 355.5, 1.75)
   return(swimming_df)
 }
 
-subject1_df <- get_swimming_data(5, folder_path)
-subject1_df$performance <- ifelse(subject1_df$performance == 0, NA,
-                                  subject1_df$performance)
+subject1_df <- get_swimming_data(1, folder_path)
+subject2_df <- get_swimming_data(2, folder_path)
+subject3_df <- get_swimming_data(3, folder_path)
+subject4_df <- get_swimming_data(4, folder_path)
+subject5_df <- get_swimming_data(5, folder_path)
 
-plot(subject1_df$performance)
+plot(perf_cp ~ performance, data = subject1_df)
 
 nrow(subject1)
 
