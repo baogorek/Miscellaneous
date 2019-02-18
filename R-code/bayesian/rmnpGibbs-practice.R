@@ -28,8 +28,7 @@ max_w <- apply(w, 1, max) # 1 val for every subject
 y <- apply(w, 1, ind_max) # 3 alternatives but we differenced so 2 in diff system
 y <- ifelse(max_w < 0, p, y) # chose the 3rd alt where max rest has neg utility
 
-# Evidence that the simulation did what it was supposed to
-
+# Evidence below that the simulation is working!
 ## The actual relative rates of each of these p alternatives:
 print(table(y) / length(y))
 
