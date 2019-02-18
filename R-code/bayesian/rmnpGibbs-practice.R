@@ -6,7 +6,6 @@ p <- 3
 n <- 2000
 na <- 2 # 2 alternative specific variables
 beta <- c(-.35, .13, 0, 0) # zeroing out impact of alt-specific vars
-# this does not seem to work well for small probabilities
 Sigma <- matrix(c(1, .2, .2, 1), ncol = 2)
 
 # 2 identical matricies made up of uniform random numbers
@@ -16,7 +15,7 @@ Xa <- cbind(X1, X2) # First three columns are var 1, second are var2
 # DIFF = TRUE. p106: "common practice to subtract pth eq from first p-1 eqs
 X  <- createX(p, na = na, nd = NULL, Xa = Xa, Xd = NULL, DIFF = TRUE)
 
-# some matrix
+# Simulating the latent variable w. Watch for matric / vector conversions
 Xbeta <- X %*% beta
 epsilon_indep <- matrix(rnorm((p - 1) * n), ncol = n) # 2 * 500 random normals!
 epsilon_depend <- t(chol(Sigma)) %*% epsilon_indep
@@ -24,6 +23,7 @@ epsilon_depend <- t(chol(Sigma)) %*% epsilon_indep
 w <- Xbeta + as.vector(epsilon_depend) # latent variable
 w <- matrix(w, ncol = p - 1, byrow = TRUE) # Back to n x (p - 1)
 
+# Simulating discrete choice variable y
 max_w <- apply(w, 1, max) # 1 val for every subject
 y <- apply(w, 1, ind_max) # 3 alternatives but we differenced so 2 in diff system
 y <- ifelse(max_w < 0, p, y) # chose the 3rd alt where max rest has neg utility
@@ -55,6 +55,7 @@ betatilde <- out$betadraw  / sqrt(out$sigmadraw[, 1])
 plot(out$betadraw[, 1]) 
 plot(betatilde[, 1]) 
 
+# Not able to recover -.35 and .13
 mean(tail(out$betadraw[, 1], 500))
 mean(tail(betatilde[, 1], 500))
 
