@@ -30,7 +30,8 @@ cape_monthly <- cape_monthly %>%
   mutate(ten_yr_return = 100 * exp(roll_mean(log(tr_multiplier), n = 120,
                                              na.rm = FALSE, align = "left",
                                              fill = NA)) ^ 12 - 100)
-# TODO: delete if not necessary
+
+# Creating a Lead return which effectively lags cape and TR-Cape 
 cape_monthly <- cape_monthly %>%
   mutate(lead_10yr_ret = lead(ten_yr_return, n = 1, order_by = Date))
 
@@ -68,7 +69,6 @@ ggplot(cape_yearly, aes(x = snap_jan_yr, y = cape)) +
   scale_y_continuous(name = "Value", limit = c(0, 45),
                      breaks = seq(0, 45, 5))
 
-
 # Figure 1.3 Irrational Exuberance
 ggplot(cape_yearly, aes(x = cape, y = lead_10yr_ret)) +
   #geom_point() + keep alive just to calibrate it with hjust, vjust
@@ -81,22 +81,60 @@ ggplot(cape_yearly, aes(x = cape, y = lead_10yr_ret)) +
 ggplot(cape_yearly, aes(x = tr_cape, y = lead_10yr_ret)) +
   #geom_point() + keep alive just to calibrate it with hjust, vjust
   geom_text(aes(label = display_year), hjust = .5, vjust = .35, size = 2.5) +
-  scale_x_continuous(name = "TR CAPE", limit = c(5, 50),
+  scale_x_continuous(name = "TR-CAPE", limit = c(5, 50),
                      breaks = seq(5, 50, 5)) +
   scale_y_continuous(name = "Ten year Return", limit = c(-5, 20),
-                     breaks = seq(-5, 20, 5))
+                     breaks = seq(-5, 20, 5)) +
+  ggtitle("Ten year return of S&P against TR-CAPE month before investing")
 
 # For reference:
 sum(is.na(cape_yearly$cape) | is.na(cape_yearly$ten_yr_return))
 
 library(MASS)
-my_rlm <- rlm(lead_10yr_ret ~ tr_cape
+my_rlm <- rlm(lead_10yr_ret ~ tr_cape, data = cape_yearly)
+my_lm <- lm(lead_10yr_ret ~ tr_cape, data = cape_yearly)
+
+cape_yearly$pred_return_rlm <- predict(my_rlm, newdata = cape_yearly)
+cape_yearly$pred_return_lm <- predict(my_lm, newdata = cape_yearly)
+
+# Augmented TR-CAPE version of Figure 1.3
+
+ggplot(cape_yearly, aes(x = tr_cape, y = lead_10yr_ret)) +
+  #geom_point() + keep alive just to calibrate it with hjust, vjust
+  geom_text(aes(label = display_year), hjust = .5, vjust = .35, size = 2.5) +
+  geom_line(aes(y = pred_return_rlm, color = "Robust Regression")) + 
+  geom_line(aes(y = pred_return_lm, color = "OLS Regression")) + 
+  scale_x_continuous(name = "TR-CAPE", limit = c(5, 50),
+                     breaks = seq(5, 50, 5)) +
+  scale_y_continuous(name = "Ten year Return", limit = c(-5, 20),
+                     breaks = seq(-5, 20, 5)) +
+  scale_color_manual(name = "Series",
+                     values = c("Robust Regression" = "blue",
+                                "OLS Regression" = "red")) + 
+  ggtitle("Ten year return of S&P against TR-CAPE month before investing")
+
+my_rlm2 <- rlm(lead_10yr_ret ~ tr_cape
               + I((snap_jan_yr - 1950) / 10),
               ,data = cape_yearly)
-#my_rlm <- rlm(lead_10yr_ret ~ tr_cape, data = cape_yearly)
+summary(my_rlm2)
 
-summary(my_rlm)
-cape_yearly$pred_return <- predict(my_rlm, newdata = cape_yearly)
+cape_yearly$pred_return_rlm2 <- predict(my_rlm2, newdata = cape_yearly)
+ggplot(cape_yearly, aes(x = tr_cape, y = lead_10yr_ret)) +
+  #geom_point() + keep alive just to calibrate it with hjust, vjust
+  geom_text(aes(label = display_year), hjust = .5, vjust = .35, size = 2.5) +
+  geom_line(aes(y = pred_return_rlm2, color = "Robust Regression")) + 
+  scale_x_continuous(name = "TR-CAPE", limit = c(5, 50),
+                     breaks = seq(5, 50, 5)) +
+  scale_y_continuous(name = "Ten year Return", limit = c(-5, 20),
+                     breaks = seq(-5, 20, 5)) +
+  scale_color_manual(name = "Series",
+                     values = c("Robust Regression" = "blue",
+                                "OLS Regression" = "red")) + 
+  ggtitle("Ten year return of S&P against TR-CAPE with simple time trend")
+
+
+
+
 cape_yearly$return_resid <- cape_yearly$lead_10yr_ret - cape_yearly$pred_return
 
 ggplot(cape_yearly, aes(x = snap_jan_yr, y = return_resid)) +
