@@ -30,6 +30,10 @@ cape_monthly <- cape_monthly %>%
   mutate(ten_yr_return = 100 * exp(roll_mean(log(tr_multiplier), n = 120,
                                              na.rm = FALSE, align = "left",
                                              fill = NA)) ^ 12 - 100)
+# TODO: delete if not necessary
+cape_monthly <- cape_monthly %>%
+  mutate(lead_10yr_ret = lead(ten_yr_return, n = 1, order_by = Date))
+
 # Sampling the January months
 cape_yearly <- cape_monthly %>%
   filter(round(Date %% 1, 2) == .01) %>%
@@ -66,7 +70,7 @@ ggplot(cape_yearly, aes(x = snap_jan_yr, y = cape)) +
 
 
 # Figure 1.3 Irrational Exuberance
-ggplot(cape_yearly, aes(x = cape, y = ten_yr_return)) +
+ggplot(cape_yearly, aes(x = cape, y = lead_10yr_ret)) +
   #geom_point() + keep alive just to calibrate it with hjust, vjust
   geom_text(aes(label = display_year), hjust = .5, vjust = .35, size = 2.5) +
   scale_x_continuous(name = "CAPE", limit = c(5, 45),
@@ -74,7 +78,7 @@ ggplot(cape_yearly, aes(x = cape, y = ten_yr_return)) +
   scale_y_continuous(name = "Ten year Return", limit = c(-5, 20),
                      breaks = seq(-5, 20, 5))
 
-ggplot(cape_yearly, aes(x = tr_cape, y = ten_yr_return)) +
+ggplot(cape_yearly, aes(x = tr_cape, y = lead_10yr_ret)) +
   #geom_point() + keep alive just to calibrate it with hjust, vjust
   geom_text(aes(label = display_year), hjust = .5, vjust = .35, size = 2.5) +
   scale_x_continuous(name = "TR CAPE", limit = c(5, 50),
@@ -84,4 +88,46 @@ ggplot(cape_yearly, aes(x = tr_cape, y = ten_yr_return)) +
 
 # For reference:
 sum(is.na(cape_yearly$cape) | is.na(cape_yearly$ten_yr_return))
+
+library(MASS)
+my_rlm <- rlm(lead_10yr_ret ~ tr_cape
+              + I((snap_jan_yr - 1950) / 10),
+              ,data = cape_yearly)
+#my_rlm <- rlm(lead_10yr_ret ~ tr_cape, data = cape_yearly)
+
+summary(my_rlm)
+cape_yearly$pred_return <- predict(my_rlm, newdata = cape_yearly)
+cape_yearly$return_resid <- cape_yearly$lead_10yr_ret - cape_yearly$pred_return
+
+ggplot(cape_yearly, aes(x = snap_jan_yr, y = return_resid)) +
+  geom_text(aes(label = display_year), hjust = .5, vjust = .35, size = 2.5) +
+  geom_line() +
+  geom_hline(yintercept = 0, linetype = "dashed", col = "red") + 
+  scale_x_continuous(name = "Year invested end of Jan", limit = c(1860, 2020),
+                     breaks = seq(1860, 2020, 20)) +
+  scale_y_continuous(name = "10 year return residual", limit = c(-15, 10),
+                     breaks = seq(-15, 10, 5)) +
+  ggtitle("TR-CAPE Residuals over time")
+
+ggplot(cape_yearly, aes(x = snap_jan_yr)) +
+  geom_text(aes(y = lead_10yr_ret, label = display_year),
+            hjust = .5, vjust = .35, size = 2.5, col = "black") +
+  geom_point(aes(y = pred_return), col = "blue") + 
+  geom_line(aes(y = pred_return), col = "blue") +
+  geom_hline(yintercept = 0, linetype = "dashed", col = "red") + 
+  scale_x_continuous(name = "Year invested end of Jan", limit = c(1860, 2020),
+                     breaks = seq(1860, 2020, 20)) +
+  scale_y_continuous(name = "10 year return TR-CAPE predictions (blue) Actuals (text)",
+                     limit = c(-15, 20),
+                     breaks = seq(-15, 20, 5)) +
+  ggtitle("S&P500 returns: Actual (text) and predicted (blue) via TR-CAPE Regression")
+
+complete_df <- cape_yearly[complete.cases(cape_yearly), ]
+spectrum(complete_df$return_resid)
+
+library(forecast)
+my_arima <- auto.arima(complete_df$return_resid)
+complete_df$ar_pred_resid <- complete_df$return_resid - fitted(my_arima)
+
+plot(complete_df$ar_pred_resid, type = "b")
 
