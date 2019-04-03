@@ -60,8 +60,9 @@ folder_path <- "c:/devl/swimming"
 get_swimming_data <- function(subject_id, folder_path, perf_params) {
   file <- paste0(file.path(folder_path, "subject"), subject_id, ".txt")
   swimming_df <- read.table(file)
+  swimming_df$subject <- subject_id
   swimming_df$day <- 1:nrow(swimming_df)
-  names(swimming_df) <- c("training", "performance", "day")
+  names(swimming_df) <- c("training", "performance", "subject", "day")
   swimming_df$performance <- ifelse(swimming_df$performance == 0, NA,
                                     swimming_df$performance)
 
@@ -75,6 +76,24 @@ subject2_df <- get_swimming_data(2, folder_path, perf_params)
 subject3_df <- get_swimming_data(3, folder_path, perf_params)
 subject4_df <- get_swimming_data(4, folder_path, perf_params)
 subject5_df <- get_swimming_data(5, folder_path, perf_params)
+
+subjects_df <- rbind(subject1_df, subject2_df, subject3_df, subject4_df,
+                     subject5_df)
+
+library(ggplot2)
+
+png("c:/devl/plots/training.png", width = 800, height = 480)
+ggplot(subjects_df, aes(x = day, y = perf_cp)) +
+  geom_col(data = subjects_df, aes(y = 10 * training), color = "grey",
+           width = .2) +
+  geom_point() +
+  facet_grid(subject ~ .) +
+  annotate("text", label = "Relative training intensities", x = 70, y = 25,
+           color = "grey32") +
+  ggtitle("Performance and training for five swimmers") +
+  xlab("Day (n)") + ylab("Performance Scale") +
+  theme(text = element_text(size = 16))
+dev.off()
 
 plot(perf_cp ~ performance, data = subject1_df)
 plot(perf_cp ~ performance, data = subject2_df)
@@ -113,9 +132,7 @@ rss <- function(theta, training, performance) {
   rss
 }
 
-
-
-# Debugging with H.T.
+# Debugging with H.T. - need to get train df in memory to do it
 subject_df <- train_df
 subject_df$perf_cp <- train_df$perf
 training <- train_df$w
@@ -130,9 +147,9 @@ perf_cp <- subject_df$perf_cp
 
 mean_perf <- mean(perf_cp, na.rm = TRUE)
 
-starting_vals <- c(mean_perf, .07, .027, 60, 13) # H.T.'s parameters
+#starting_vals <- c(mean_perf, .07, .027, 60, 13) # H.T.'s parameters
                    
-#starting_vals <- c(mean_perf, .07, .027, 10, 2) # new starting vals
+starting_vals <- c(mean_perf, .07, .027, 10, 2) # new starting vals
 optim_results <- optim(starting_vals,
                        function(theta) rss(theta, training, perf_cp),
                        method = "BFGS",
@@ -210,13 +227,17 @@ T <- 180 # max number of days considered in spline
 library(splines)
 #my_spline <- ns(1:T, Boundary.knots = c(1, T), knots = c(14, 40, 100))
 
-my_spline <- ns(1:T, Boundary.knots = c(1, T), knots = c(3, 12, 25))
+my_spline <- ns(1:T, Boundary.knots = c(1, T), knots = c(4, 12, 80))
+
+# Subject 3 is interesting. Noticing that if you don't have a knot out 
+# close to 100, you'll get a negative trend line that doesn't line up
+# much with the model
 
 #subject_df <- train_df
 #subject_df$perf_cp <- subject_df$perf
 #training <- subject_df$w
 
-subject_df <- subject1_df # TODO generalize
+subject_df <- subject3_df # TODO generalize
 training <- subject_df$training
 
 z_vars <- list()
@@ -247,5 +268,7 @@ days_grid <- 0:T
 spline_vars_grid <- predict(my_spline, newx = days_grid)
 spline_vars_grid <- cbind(1, spline_vars_grid)
 eta <- spline_vars_grid %*% coef(spline_reg)[-1]
-plot(eta ~ days_grid, main = "subject 1")
+plot(eta ~ days_grid, main = "subject ?", ylim = c(-.5, .5))
 lines(combined_fn(days_grid, params) ~ days_grid, col = "blue")
+
+
