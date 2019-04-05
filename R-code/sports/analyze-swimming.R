@@ -194,7 +194,7 @@ ggplot(subjects_df, aes(x = day, y = perf_cp)) +
   facet_grid(subject ~ .) +
   annotate("text", label = "Relative training intensities", x = 70, y = 25,
            color = "grey32") +
-  ggtitle("Performance and training for five swimmers") +
+  ggtitle("Fitness-fatigue based performance prediction") +
   xlab("Day (n)") + ylab("Performance Scale") +
   theme(text = element_text(size = 16))
 dev.off()
@@ -257,52 +257,75 @@ plot(combined_fn(1:180, params))
 
 # Spline-based estimation
 
-T <- 180 # max number of days considered in spline
 library(splines)
-#my_spline <- ns(1:T, Boundary.knots = c(1, T), knots = c(14, 40, 100))
 
-my_spline <- ns(1:T, Boundary.knots = c(1, T), knots = c(4, 12, 80))
+days_grid <- 0:180
+interior_knots <- c(2, 6, 25)
 
-# Subject 3 is interesting. Noticing that if you don't have a knot out 
-# close to 100, you'll get a negative trend line that doesn't line up
-# much with the model
+my_spline <- ns(days_grid, Boundary.knots = c(1, T), knots = interior_knots)
 
-#subject_df <- train_df
-#subject_df$perf_cp <- subject_df$perf
-#training <- subject_df$w
+perf_hat <- c()
+eta_df <- data.frame()
 
-subject_df <- subject3_df # TODO generalize
-training <- subject_df$training
+for (j in 1:5) {
+  subject_df <- subjects_df %>% filter(subject == j) 
+  training <- subject_df$training
+  
+  z_vars <- list()
+  for (n in 1:nrow(subject_df)) {
+    spline_pred  <- predict(my_spline, newx = (n - 1):1)
+    spline_vars  <- colSums(spline_pred * training[1:(n - 1)]) # convolution
+    spline_const <- sum(training[1:(n - 1)])
+    z_vars[[n]]  <- c(spline_const, spline_vars)
+  }
+  
+  z_vars_df <- Reduce(rbind.data.frame, z_vars)
+  names(z_vars_df) <- paste0("z_", 1:ncol(z_vars_df))
+  
+  subject_aug_df <- cbind(subject_df, z_vars_df)
+  
+  spline_reg <- lm(perf_cp ~ z_1 + z_2 + z_3 + z_4 + z_5, data = subject_aug_df)
+  summary(spline_reg)
+  
+  subject_aug_df$perf_hat <- predict(spline_reg, subject_aug_df)
+  perf_hat <- c(perf_hat, subject_aug_df$perf_hat)
+  
+  
+  spline_vars_grid <- cbind(1, predict(my_spline, newx = days_grid))
+  eta <- as.numeric(spline_vars_grid %*% coef(spline_reg)[-1])
+  eta_df <- rbind(eta_df, data.frame(subject = j, day = days_grid, eta = eta))
 
-z_vars <- list()
-for (n in 1:nrow(subject_df)) {
-  spline_pred  <- predict(my_spline, newx = (n - 1):1)
-  spline_vars  <- colSums(spline_pred * training[1:(n - 1)]) # convolution
-  spline_const <- sum(training[1:(n - 1)])
-  z_vars[[n]]  <- c(spline_const, spline_vars)
 }
+subjects_df$perf_hat_spline <- perf_hat
 
-z_vars_df <- Reduce(rbind.data.frame, z_vars)
-names(z_vars_df) <- paste0("z_", 1:ncol(z_vars_df))
+png("c:/devl/plots/swim-conv-pred.png", width = 800, height = 960)
+ggplot(subjects_df, aes(x = day, y = perf_cp)) +
+  geom_col(data = subjects_df, aes(y = 10 * training), color = "grey",
+           width = .2) +
+  geom_point() +
+  geom_line(aes(y = perf_hat), color = "blue") +
+  geom_line(aes(y = perf_hat_spline), color = "dark orange") +
+  facet_grid(subject ~ .) +
+  annotate("text", label = "Relative training intensities", x = 70, y = 25,
+           color = "grey32") +
+  ggtitle("Adding convolution-based performance prediction") +
+  xlab("Day (n)") + ylab("Performance Scale") +
+  theme(text = element_text(size = 16))
+dev.off()
 
-subject_aug_df <- cbind(subject_df, z_vars_df)
+png("c:/devl/plots/swim-eta.png", width = 800, height = 960)
+ggplot(eta_df, aes(x = day, y = eta)) +
+  geom_line(color = "blue", size = 1.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "green", size = 1) +
+  geom_point(data = data.frame(x = interior_knots), aes(x = x, y = 0),
+             shape = 10, size = 3, color = "brown") +
+  facet_grid(subject ~ .) +
+  ggtitle("Spline-based estimation of impulse response \u03D5(t)") +
+  xlab("Day (n)") + ylab("Lag distribution value") +
+  theme(text = element_text(size = 16))
+dev.off()
 
-spline_reg <- lm(perf_cp ~ z_1 + z_2 + z_3 + z_4 + z_5, data = subject_aug_df)
-summary(spline_reg)
+# Put a knot out at 80 or 100 to show what a bad knot placement can do
 
-not_missing <- !is.na(subject_df$perf_cp)
-subject_aug_df$perf_hat <- NA
-subject_aug_df[not_missing, "perf_hat"] <- spline_reg$fitted
-
-plot(perf_cp ~ day, data = subject_aug_df)
-points(perf_hat ~ day, col = "red", data = subject_aug_df) # can't do lines: NAs
-
-# Visualize the spline function
-days_grid <- 0:T
-spline_vars_grid <- predict(my_spline, newx = days_grid)
-spline_vars_grid <- cbind(1, spline_vars_grid)
-eta <- spline_vars_grid %*% coef(spline_reg)[-1]
-plot(eta ~ days_grid, main = "subject ?", ylim = c(-.5, .5))
-lines(combined_fn(days_grid, params) ~ days_grid, col = "blue")
 
 
