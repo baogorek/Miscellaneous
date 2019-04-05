@@ -82,7 +82,7 @@ subjects_df <- rbind(subject1_df, subject2_df, subject3_df, subject4_df,
 
 library(ggplot2)
 
-png("c:/devl/plots/training.png", width = 800, height = 480)
+png("c:/devl/plots/training.png", width = 800, height = 960)
 ggplot(subjects_df, aes(x = day, y = perf_cp)) +
   geom_col(data = subjects_df, aes(y = 10 * training), color = "grey",
            width = .2) +
@@ -126,6 +126,7 @@ predict_performance <- function(theta, training) {
   E_hat_perf
 }
 
+# TODO: what things have to be added now that there is missing data: the na.rm?
 rss <- function(theta, training, performance) {
   perf_hat <- predict_performance(theta, training) 
   rss <- sum((performance - perf_hat) ^ 2, na.rm = TRUE)
@@ -140,31 +141,64 @@ perf_cp <- train_df$perf
 
 
 # Swimmers
+params_df <- data.frame()
+perf_hat <- c()
 
-subject_df <- subject1_df
-training <- subject_df$training
-perf_cp <- subject_df$perf_cp
+for (j in 1:5) {
+  subject_df <- subjects_df %>% filter(subject == j)
+  training <- subject_df$training
+  perf_cp <- subject_df$perf_cp
+  
+  mean_perf <- mean(perf_cp, na.rm = TRUE)
+  #starting_vals <- c(mean_perf, .07, .027, 60, 13) # H.T.'s parameters
+  
+  
+                     
+  starting_vals <- c(mean_perf, .07, .027, 10, 2) # new starting vals
+  optim_results <- optim(starting_vals,
+                         function(theta) rss(theta, training, perf_cp),
+                         method = "BFGS",
+                         hessian = TRUE, control = list(maxit = 4000))
+  
+  r2 <- 1 - optim_results$value / sum((perf_cp - mean_perf) ^ 2, na.rm = TRUE)
+  params <- optim_results$par
+  cat("optim results.\nbaseline:", params[1], "\nfitness weight k1:", params[2],
+      "\nfatigue weight k2:", params[3], "\nfitness time constant:", params[4],
+      "\nfatigue time constant:", params[5], "\nr-squared:", r2, "\n")
+  
+  params_df <- rbind(params_df, data.frame(baseline = params[1],
+                                           fitness_weight = params[2],
+                                           fatigue_weight = params[3],
+                                           fitness_time_const = params[4],
+                                           fatigue_time_const = params[5]))
+  
+  perf_hat <- c(perf_hat, predict_performance(params, training))
+}
 
-mean_perf <- mean(perf_cp, na.rm = TRUE)
+# https://www.r-graph-gallery.com/115-study-correlations-with-a-correlogram/
+png("c:/devl/plots/table.png", width = 600, height = 300)
+qplot(1:10, 1:10, geom = "blank") +
+  theme_bw() +
+  theme(line = element_blank(), text = element_blank()) +
+  annotation_custom(grob = tableGrob(round(params_df, 2)))
+dev.off()
 
-#starting_vals <- c(mean_perf, .07, .027, 60, 13) # H.T.'s parameters
-                   
-starting_vals <- c(mean_perf, .07, .027, 10, 2) # new starting vals
-optim_results <- optim(starting_vals,
-                       function(theta) rss(theta, training, perf_cp),
-                       method = "BFGS",
-                       hessian = TRUE, control = list(maxit = 4000))
+subjects_df$perf_hat <- perf_hat
 
-r2 <- 1 - optim_results$value / sum((perf_cp - mean_perf) ^ 2, na.rm = TRUE)
-params <- optim_results$par
-cat("optim results.\nbaseline:", params[1], "\nfitness weight k1:", params[2],
-    "\nfatigue weight k2:", params[3], "\nfitness time constant:", params[4],
-    "\nfatigue time constant:", params[5], "\nr-squared:", r2, "\n")
+png("c:/devl/plots/swim-ff-pred.png", width = 800, height = 960)
+ggplot(subjects_df, aes(x = day, y = perf_cp)) +
+  geom_col(data = subjects_df, aes(y = 10 * training), color = "grey",
+           width = .2) +
+  geom_point() +
+  geom_line(aes(y = perf_hat), color = "blue") +
+  facet_grid(subject ~ .) +
+  annotate("text", label = "Relative training intensities", x = 70, y = 25,
+           color = "grey32") +
+  ggtitle("Performance and training for five swimmers") +
+  xlab("Day (n)") + ylab("Performance Scale") +
+  theme(text = element_text(size = 16))
+dev.off()
 
-subject_df$perf_hat <- predict_performance(params, training)
-
-plot(subject_df$perf_cp ~ subject_df$day)
-lines(subject_df$perf_hat ~ subject_df$day, col = 'red')
 
 # Subject 1:
 optim results.
