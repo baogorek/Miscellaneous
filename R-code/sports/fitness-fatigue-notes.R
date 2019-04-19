@@ -115,6 +115,37 @@ get_performance <- function(theta) {
 
   int + k1 * fitness - k2 * fatigue
 }
+
+get_jacobian <- function(theta, h = .0001) {
+  p <- length(theta)
+  J_theta <- matrix(numeric(nrow(train_df) * p), ncol = p)
+
+  for (j in 1:p) { 
+    theta_plus <- theta
+    theta_plus[j] <- theta_plus[j] + h
+    
+    f_prime <- (get_performance(theta_plus) - get_performance(theta)) / h
+    J_theta[, j] <- f_prime
+  }
+  J_theta
+}
+
+estimate_sigma_sq <- function(theta) {
+  n <- nrow(train_df)
+  p <- length(theta)
+
+  return(rss(theta) / (n - p))
+}
+
+X_theta <- get_jacobian(optim_results$par)
+sigma_sq_hat <- estimate_sigma_sq(optim_results$par)
+
+V <- sigma_sq_hat * solve(t(X_theta) %*% X_theta)
+sqrt(diag(V))
+
+
+
+
                     
 train_df$perf_hat <- get_performance(optim_results$par)
 write.csv(train_df, "c:/devl/data/train_df.csv", row.names = FALSE,

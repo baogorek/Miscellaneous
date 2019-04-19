@@ -26,6 +26,8 @@
 # Get a & b through setting:
 # 1000 = g(world record performance)
 #    0 = g(able-bodied individual performance)
+
+# Code Block 1 ---------------------------------------------------------------
 get_perf_params <- function(world_record_perf, able_bodied_perf, limit,
                              type = "running") {
   # sum of squares around fixed point
@@ -47,6 +49,13 @@ get_perf_params <- function(world_record_perf, able_bodied_perf, limit,
 }
 
 
+# Code Block 2 ---------------------------------------------------------------
+
+library(ggplot2)
+
+# Files are at ...
+folder_path <- "c:/devl/swimming" # Update accordingly
+
 perf_params <- get_perf_params(world_record_perf = 1.8,
                                able_bodied_perf = 0.5, limit = 2.0,
                                type = "jumping")
@@ -55,7 +64,6 @@ get_perf_in_cp <- function(perf, a, b, limit) {
   b * log(a / (perf - limit))
 }
 
-folder_path <- "c:/devl/swimming"
 
 get_swimming_data <- function(subject_id, folder_path, perf_params) {
   file <- paste0(file.path(folder_path, "subject"), subject_id, ".txt")
@@ -80,26 +88,26 @@ subject5_df <- get_swimming_data(5, folder_path, perf_params)
 subjects_df <- rbind(subject1_df, subject2_df, subject3_df, subject4_df,
                      subject5_df)
 
-library(ggplot2)
-
 png("c:/devl/plots/training.png", width = 800, height = 960)
 ggplot(subjects_df, aes(x = day, y = perf_cp)) +
   geom_col(data = subjects_df, aes(y = 10 * training), color = "grey",
            width = .2) +
   geom_point() +
   facet_grid(subject ~ .) +
-  annotate("text", label = "Relative training intensities", x = 70, y = 25,
-           color = "grey32") +
+  annotate("text", label = "Relative training intensities (x10)",
+           x = 70, y = 25, color = "grey32") +
   ggtitle("Performance and training for five swimmers") +
   xlab("Day (n)") + ylab("Performance Scale") +
   theme(text = element_text(size = 16))
 dev.off()
 
-plot(perf_cp ~ performance, data = subject1_df)
-plot(perf_cp ~ performance, data = subject2_df)
-plot(perf_cp ~ performance, data = subject3_df)
-plot(perf_cp ~ performance, data = subject4_df)
-plot(perf_cp ~ performance, data = subject5_df)
+#plot(perf_cp ~ performance, data = subject1_df)
+
+
+# Code block 3 ---------------------------------------------------------------
+library(dplyr)
+library(gridExtra)
+library(ggplot2)
 
 exp_decay <- function(t, tau) {
     exp(-t / tau)
@@ -126,22 +134,44 @@ predict_performance <- function(theta, training) {
   E_hat_perf
 }
 
-# TODO: what things have to be added now that there is missing data: the na.rm?
 rss <- function(theta, training, performance) {
   perf_hat <- predict_performance(theta, training) 
   rss <- sum((performance - perf_hat) ^ 2, na.rm = TRUE)
   rss
 }
 
-# Debugging with H.T. - need to get train df in memory to do it
-subject_df <- train_df
-subject_df$perf_cp <- train_df$perf
-training <- train_df$w
-perf_cp <- train_df$perf
+get_jacobian <- function(theta, training, h = .0001) {
+  p <- length(theta)
+  J_theta <- matrix(numeric(length(training) * p), ncol = p)
 
+  for (j in 1:p) {
+    theta_plus <- theta
+    theta_plus[j] <- theta_plus[j] + h
 
-# Swimmers
+    f_prime <- (predict_performance(theta_plus, training) -
+                predict_performance(theta, training)) / h
+    J_theta[, j] <- f_prime
+  }
+  J_theta
+}
+
+estimate_sigma_sq <- function(theta, training, performance) {
+  n <- length(training)
+  p <- length(theta)
+
+  return(rss(theta, training, performance) / (n - p))
+}
+
+get_standard_errors <- function(theta, training, performance) {
+  X_theta <- get_jacobian(theta, training)
+  sigma_sq_hat <- estimate_sigma_sq(theta, training, performance)
+  
+  V <- sigma_sq_hat * solve(t(X_theta) %*% X_theta)
+  sqrt(diag(V))
+}
+
 params_df <- data.frame()
+se_df <- data.frame()
 perf_hat <- c()
 
 for (j in 1:5) {
@@ -151,29 +181,23 @@ for (j in 1:5) {
   
   mean_perf <- mean(perf_cp, na.rm = TRUE)
   #starting_vals <- c(mean_perf, .07, .027, 60, 13) # H.T.'s parameters
-  
-  
-                     
   starting_vals <- c(mean_perf, .07, .027, 10, 2) # new starting vals
   optim_results <- optim(starting_vals,
                          function(theta) rss(theta, training, perf_cp),
-                         method = "BFGS",
-                         hessian = TRUE, control = list(maxit = 4000))
-  
-  r2 <- 1 - optim_results$value / sum((perf_cp - mean_perf) ^ 2, na.rm = TRUE)
+                         method = "BFGS", control = list(maxit = 4000))
   params <- optim_results$par
-  cat("optim results.\nbaseline:", params[1], "\nfitness weight k1:", params[2],
-      "\nfatigue weight k2:", params[3], "\nfitness time constant:", params[4],
-      "\nfatigue time constant:", params[5], "\nr-squared:", r2, "\n")
-  
-  params_df <- rbind(params_df, data.frame(baseline = params[1],
-                                           fitness_weight = params[2],
-                                           fatigue_weight = params[3],
-                                           fitness_time_const = params[4],
-                                           fatigue_time_const = params[5]))
-  
+
+  std_errors <- get_standard_errors(params, training, perf_cp)
+  names(params) <- c("baseline", "fitness_weight", "fatigue_weight",
+                     "fitness_time_const", "fatigue_time_const") 
+  names(std_errors) <- names(params)
+
+  params_df <- rbind(params_df, as.data.frame(t(params)))
+  se_df <- rbind(se_df, as.data.frame(t(std_errors)))
+
   perf_hat <- c(perf_hat, predict_performance(params, training))
 }
+subjects_df$perf_hat <- perf_hat
 
 # https://www.r-graph-gallery.com/115-study-correlations-with-a-correlogram/
 png("c:/devl/plots/table.png", width = 600, height = 300)
@@ -183,86 +207,50 @@ qplot(1:10, 1:10, geom = "blank") +
   annotation_custom(grob = tableGrob(round(params_df, 2)))
 dev.off()
 
-subjects_df$perf_hat <- perf_hat
+png("c:/devl/plots/table2.png", width = 600, height = 300)
+qplot(1:10, 1:10, geom = "blank") +
+  theme_bw() +
+  theme(line = element_blank(), text = element_blank()) +
+  annotation_custom(grob = tableGrob(round(se_df, 2)))
+dev.off()
+
 
 png("c:/devl/plots/swim-ff-pred.png", width = 800, height = 960)
 ggplot(subjects_df, aes(x = day, y = perf_cp)) +
   geom_col(data = subjects_df, aes(y = 10 * training), color = "grey",
            width = .2) +
   geom_point() +
-  geom_line(aes(y = perf_hat), color = "blue") +
+  geom_line(aes(y = perf_hat), color = "blue", size = 1) +
   facet_grid(subject ~ .) +
-  annotate("text", label = "Relative training intensities", x = 70, y = 25,
-           color = "grey32") +
+  annotate("text", label = "Relative training intensities (x10)",
+           x = 70, y = 25, color = "grey32") +
   ggtitle("Fitness-fatigue based performance prediction") +
   xlab("Day (n)") + ylab("Performance Scale") +
   theme(text = element_text(size = 16))
 dev.off()
 
+# Commented code shows impulse response of fitness fatigue model
+#combined_fn <- function(t, theta) {
+#  k1   <- theta[2] # fitness weight
+#  k2   <- theta[3] # fatigue weight
+#  tau1 <- theta[4] # fitness decay
+#  tau2 <- theta[5] # fatigue decay
+#
+#  k1 * exp_decay(t, tau1) - k2 * exp_decay(t, tau2)
+#}
+#
+#plot(combined_fn(1:180, params))
 
-# Subject 1:
-optim results.
-baseline: 378.0693
-fitness weight k1: 0.4657578
-fatigue weight k2: 2.15723
-fitness time constant: 34.52629
-fatigue time constant: 1.354281
-r-squared: .66 
-
-# Subject 2:
-optim results.
-baseline: 436.2137
-fitness weight k1: 3.415835
-fatigue weight k2: 5.594413
-fitness time constant: 4.250244
-fatigue time constant: 1.643186
-r-squared: 0.1973328
-
-# Subject 3: Starting at HT's vals gives slightly higher R^2 but less interp
-optim results.
-baseline: 385.812
-fitness weight k1: 0.4703905
-fatigue weight k2: 0.7229054
-fitness time constant: 23.48448
-fatigue time constant: 13.39863
-r-squared: 0.232773
-
-# Subject 4:
-optim results.
-baseline: 390.9804
-fitness weight k1: 0.05362491
-fatigue weight k2: 1.408042
-fitness time constant: 46.11724
-fatigue time constant: 1.764495
-r-squared: 0.1505 
-
-# Subject 5:  # dramatic dependence on starting vals
-baseline: 125.5009
-fitness weight k1: 75.79572
-fatigue weight k2: 75.92196
-fitness time constant: 1915.647
-fatigue time constant: 1806.457
-r-squared: 0.473
-
-combined_fn <- function(t, theta) {
-  k1   <- theta[2] # fitness weight
-  k2   <- theta[3] # fatigue weight
-  tau1 <- theta[4] # fitness decay
-  tau2 <- theta[5] # fatigue decay
-
-  k1 * exp_decay(t, tau1) - k2 * exp_decay(t, tau2)
-}
-
-plot(combined_fn(1:180, params))
-
-# Spline-based estimation
-
+# Code Block 4, Spline-based estimation --------------------------------------
+library(dplyr)
+library(ggplot2)
 library(splines)
 
 days_grid <- 0:180
 interior_knots <- c(2, 6, 25)
+#interior_knots <- c(6, 25, 80)
 
-my_spline <- ns(days_grid, Boundary.knots = c(1, T), knots = interior_knots)
+my_spline <- ns(days_grid, knots = interior_knots)
 
 perf_hat <- c()
 eta_df <- data.frame()
@@ -298,21 +286,6 @@ for (j in 1:5) {
 }
 subjects_df$perf_hat_spline <- perf_hat
 
-png("c:/devl/plots/swim-conv-pred.png", width = 800, height = 960)
-ggplot(subjects_df, aes(x = day, y = perf_cp)) +
-  geom_col(data = subjects_df, aes(y = 10 * training), color = "grey",
-           width = .2) +
-  geom_point() +
-  geom_line(aes(y = perf_hat), color = "blue") +
-  geom_line(aes(y = perf_hat_spline), color = "dark orange") +
-  facet_grid(subject ~ .) +
-  annotate("text", label = "Relative training intensities", x = 70, y = 25,
-           color = "grey32") +
-  ggtitle("Adding convolution-based performance prediction") +
-  xlab("Day (n)") + ylab("Performance Scale") +
-  theme(text = element_text(size = 16))
-dev.off()
-
 png("c:/devl/plots/swim-eta.png", width = 800, height = 960)
 ggplot(eta_df, aes(x = day, y = eta)) +
   geom_line(color = "blue", size = 1.5) +
@@ -325,7 +298,32 @@ ggplot(eta_df, aes(x = day, y = eta)) +
   theme(text = element_text(size = 16))
 dev.off()
 
-# Put a knot out at 80 or 100 to show what a bad knot placement can do
+png("c:/devl/plots/swim-conv-pred.png", width = 800, height = 960)
+ggplot(subjects_df, aes(x = day, y = perf_cp)) +
+  geom_col(data = subjects_df, aes(y = 10 * training), color = "grey",
+           width = .2) +
+  geom_point() +
+  geom_line(aes(y = perf_hat), color = "blue", size = 1) +
+  geom_line(aes(y = perf_hat_spline), color = "dark orange", size = 1) +
+  facet_grid(subject ~ .) +
+  annotate("text", label = "Relative training intensities (x10)",
+           x = 70, y = 25, color = "grey32") +
+  ggtitle("Adding convolution-based performance prediction") +
+  xlab("Day (n)") + ylab("Performance Scale") +
+  theme(text = element_text(size = 16))
+dev.off()
 
-
+# Put a knot out at 80 and rerun to show what a bad knot placement can do
+png("c:/devl/plots/swim-eta-bad-knots.png", width = 800, height = 960)
+ggplot(eta_df, aes(x = day, y = eta)) +
+  geom_line(color = "blue", size = 1.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "green", size = 1) +
+  geom_point(data = data.frame(x = interior_knots), aes(x = x, y = 0),
+             shape = 10, size = 3, color = "brown") +
+  facet_grid(subject ~ .) +
+  ggtitle(paste("Spline-based estimation of \u03D5(t) with less favorable",
+          "knot placement")) +
+  xlab("Day (n)") + ylab("Lag distribution value") +
+  theme(text = element_text(size = 16))
+dev.off()
 
