@@ -115,6 +115,37 @@ get_performance <- function(theta) {
 
   int + k1 * fitness - k2 * fatigue
 }
+
+get_jacobian <- function(theta, h = .0001) {
+  p <- length(theta)
+  J_theta <- matrix(numeric(nrow(train_df) * p), ncol = p)
+
+  for (j in 1:p) { 
+    theta_plus <- theta
+    theta_plus[j] <- theta_plus[j] + h
+    
+    f_prime <- (get_performance(theta_plus) - get_performance(theta)) / h
+    J_theta[, j] <- f_prime
+  }
+  J_theta
+}
+
+estimate_sigma_sq <- function(theta) {
+  n <- nrow(train_df)
+  p <- length(theta)
+
+  return(rss(theta) / (n - p))
+}
+
+X_theta <- get_jacobian(optim_results$par)
+sigma_sq_hat <- estimate_sigma_sq(optim_results$par)
+
+V <- sigma_sq_hat * solve(t(X_theta) %*% X_theta)
+sqrt(diag(V))
+
+
+
+
                     
 train_df$perf_hat <- get_performance(optim_results$par)
 write.csv(train_df, "c:/devl/data/train_df.csv", row.names = FALSE,
@@ -131,19 +162,28 @@ dev.off()
 
 # Implement Spline Regression approach
 
-# The ultimate convolving function for the training data is:
-combined_fn <- function(t) {
-  0.07 * exp_decay(t, 60) - 0.27 * exp_decay(t, 13)
+exp_decay <- function(t, tau) {
+  exp(-t / tau)
 }
 
-plot_df <- data.frame(day = 1:259, level = combined_fn(1:259),
-                      type = "true function")
+get_true_phi <- function(t) {
+  0.07 * exp_decay(t, 60) - 0.27 * exp_decay(t, 13)
+}
+days_grid <- 1:259
+my_spline <- ns(days_grid, Boundary.knots = c(1, 259), knots = c(14, 40, 100))
 
-my_spline <- ns(1:259, Boundary.knots = c(1, 259), knots = c(14, 40, 100))
-my_lm <- lm(plot_df$level ~ my_spline)
+eta_star_lm <- lm(get_true_phi(days_grid) ~ my_spline)
+print(eta_star_lm)
 
-plot_df <- rbind(plot_df, data.frame(day = 1:259, level = predict(my_lm),
-                                     type = "spline approx"))
+eta_star <- fitted(eta_star_lm)
+
+plot_df <- rbind(
+  data.frame(day = days_grid, level = get_true_phi(days_grid),
+             type = "true \u03D5(t)"),
+  data.frame(day = days_grid, level = eta_star,
+             type = "best fit \u03B7*(t)")
+)
+# Plotting code omitted
 
 png("c:/devl/plots/total-system-response.png", width = 800, height = 480)
 ggplot(plot_df, aes(x = day, y = level, color = type, linetype = type)) +
@@ -152,27 +192,6 @@ ggplot(plot_df, aes(x = day, y = level, color = type, linetype = type)) +
   xlab("Day (n)") + ylab("Lag distribution value") +
   theme(text = element_text(size = 16))
 dev.off()
-
-# First, a check to make sure convolving with this one fn acutally works
-convolve_training2 <- function(training, n) {
-  sum(training[1:(n - 1)] * combined_fn((n - 1):1))
-}
-
-
-total <- sapply(1:nrow(train_df),
-                function(n) convolve_training2(train_df$w, n)) 
-
-plot(496 + total ~ train_df$day) # yep, it works
-
-# Next step is to "cheat" and get a set of knots that will lead to good approx
-# Construct a spline
-library(splines)
-my_spline <- ns(1:259, Boundary.knots = c(1, 259), knots = c(14, 40, 100))
-output <- combined_fn(1:259)
-
-my_lm <- lm(output ~ my_spline)
-plot(output ~ c(1:259))
-lines(predict(my_lm) ~ c(1:259), col = "blue") # Not bad!
 
 # Now let's create the regression
 # Starting with evenly space time series, no missing vals. delta_t = 1
@@ -198,100 +217,63 @@ summary(spline_reg)
 
 train_aug_df$perf_hat <- spline_reg$fitted
 
-png("c:/devl/plots/overall-again.png", width = 800, height = 480)
-ggplot(train_aug_df) +
-  geom_point(aes(x = day, y = perf)) +
-  geom_line(aes(x = day, y = perf_hat), color = "blue", size = .9) +
-  ggtitle("Performance, observed and modeled (v2)") +
-  xlab("Day (n)") + ylab("Performance") +
+# Finish the article by visualizing the spline function
+get_true_phi <- function(t) {
+  0.07 * exp_decay(t, 60) - 0.27 * exp_decay(t, 13)
+}
+
+get_eta_hat <- function(t_seq) {
+  spline_vars_grid <- predict(my_spline, newx = t_seq)
+  spline_vars_grid <- cbind(1, spline_vars_grid)
+  eta_hat <- spline_vars_grid %*% coef(spline_reg)[-1]
+  as.numeric(eta_hat)
+}
+
+convolve_with_fn <- function(training, n, impulse_fn) {
+  sum(training[1:(n - 1)] * impulse_fn((n - 1):1))
+}
+
+cumulative_impact_eta <- sapply(1:nrow(train_df),
+                                function(n) convolve_with_fn(train_df$w, n,
+                                                             get_eta_hat))
+cumulative_impact_phi <- sapply(1:nrow(train_df),
+                                function(n) convolve_with_fn(train_df$w, n,
+                                                             get_true_phi))
+
+train_aug_df$perf_hat_convo_eta <- coef(spline_reg)[1] + cumulative_impact_eta
+train_aug_df$perf_hat_fitness_fatigue <- 496 + cumulative_impact_phi
+
+# Removing end effects, convolving with spline is same as regression fitted vals
+all(abs(train_aug_df$perf_hat_convo_eta  - train_aug_df$perf_hat)[-1] < .001)
+
+days_grid <- 1:259
+eta_hat <- get_eta_hat(days_grid)
+phi <- get_true_phi(days_grid)
+
+plot_df <- data.frame(day = days_grid, level = phi, type = "true \u03D5(t)")
+plot_df <- rbind(plot_df, data.frame(day = 1:259, level = eta_hat,
+                                     type = "fitted \u03B7(t)"))
+
+png("c:/devl/plots/spline-recon.png", width = 800, height = 480)
+ggplot(plot_df, aes(x = day, y = level, color = type, linetype = type)) +
+  geom_line(size = 2) +
+  ggtitle("Spline-based estimation of impulse response \u03D5(t)") +
+  xlab("Day (n)") + ylab("Lag distribution value") +
   theme(text = element_text(size = 16))
 dev.off()
 
-
-# Notes on the Cp performance variable discussed in Human Performance
-# Over time, performance can be observed to follow:
-# y = L + a exp(-t / b)
-# a: amplitude parameter (positive for running, negative for throwing)
-# b: time paramter
-# L: ultimate limit
-#
-# Suggests a transformation where you treat your performance as where
-# you are on the x-axis in approaching the limit
-# 
-# g(y) = b * ln(a / (y - L))
-# Get a & b through setting:
-# 1000 = g(world record performance)
-#    0 = g(able-bodied individual performance)
-
-# Solving this by writing in "fixed point" form:
-
-rss <- function(a, b, world_record_perf, able_bodied_perf, limit) {
-  (1000 - b * log(a / (world_record_perf - limit))) ** 2 +
-  (0    - b * log(a / (able_bodied_perf - limit))) ** 2
-}
-   
-
-optim_results <- optim(c(1, 1), function(params) rss(params[1], params[2],
-                                                     3.5, 15, 3.1))
-
-optim_results$par
-
-# Or, in one function:
-get_perf_a_and_b <- function(world_record_perf, able_bodied_perf, limit,
-                             type = "running") {
-  # sum of squares around fixed point
-  rss <- function(a, b, world_record_perf, able_bodied_perf, limit) {
-    (1000 - b * log(a / (world_record_perf - limit))) ** 2 +
-    (0    - b * log(a / (able_bodied_perf - limit))) ** 2
-  }
- 
-  stopifnot(type %in% c("running", "jumping"))
-  a_starting <- ifelse(type == "running", 5, -5)
-  b_starting <- 100
-
- optim_results <- optim(c(a_starting, b_starting),
-                        function(params) rss(params[1], params[2],
-                                             world_record_perf,
-                                             able_bodied_perf, limit))
- optim_results$par
-}
+png("c:/devl/plots/overall-again.png", width = 800, height = 480)
+ggplot(train_aug_df) +
+  geom_point(aes(x = day, y = perf)) +
+  geom_line(aes(x = day, y = perf_hat_fitness_fatigue, color = "blue"),
+            size = .9) +
+  geom_line(aes(x = day, y = perf_hat, color = "dark orange"), size = .9) +
+  ggtitle("Performance, observed and modeled") +
+  xlab("Day (n)") + ylab("Performance") +
+  theme(text = element_text(size = 16)) +
+  scale_colour_manual(name = "model",
+    values =c("blue" = "blue","dark orange" = "dark orange"),
+    labels = c("fitness-fatigue", "spline-based"))
+dev.off()
 
 
-
-# The sport in the Kalman paper is a "semi-tethered swimming test" with varying
-# resistance among sets, so it's unlikely to be something I can look up
-# Solving nonlinear equations:
-# 1000 - b
-
-
-
-
-
-
-
-
-
-# Regression variables for more general delta_t, but assumes they are all same
-delta_t <- train_df$day[2] - train_df$day[1]
-
-# Confusing: n is also day
-new_vars <- list()
-for (n in 1:nrow(train_df)) {
-  spline_arg <- (n - 1:n - 1) * delta_t # n, n - 1, ..., 1 times delta_t
-  spline_pred <- predict(my_spline, newx = spline_arg)
-  spline_vars <- colSums(spline_pred * train_df$w) # convolution
-  spline_const <- sum(train_df$w * delta_t)
-  new_vars[[n]] <- c(spline_const, spline_vars)
-}
-
-new_vars_df <- Reduce(rbind.data.frame, new_vars)
-names(new_vars_df) <- paste0("z_", 1:ncol(new_vars_df))
-
-train_df <- cbind(train_df, new_vars_df)
-
-spline_reg <- lm(perf ~ z_1 + z_2 + z_3 + z_4 + z_5, data = train_df)
-summary(spline_reg)
-
-spline_recon <- coef(spline_reg)[2] + my_spline %*% coef(spline_reg)[3:6]
-plot(combined_fn(1:259) ~ c(1:259))
-lines(spline_recon ~ c(1:259), col = "red")
