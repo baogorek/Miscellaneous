@@ -24,6 +24,6 @@ vmap <Leader>s :SlimuxREPLSendSelection<CR>
 map <Leader>a :SlimuxShellLast<CR>
 map <Leader>k :SlimuxSendKeysLast<CR>
 
-map <Leader>c :SlimuxShellRun cpaste
-map <Leader>e :SlimuxShellRun --
-map <Leader>p :SlimuxShellConfigure
+map <Leader>c :SlimuxShellRun cpaste<CR>
+map <Leader>e :SlimuxShellRun --<CR>
+map <Leader>p :SlimuxShellConfigure<CR>
