@@ -28,11 +28,10 @@ train_op = tf.train.GradientDescentOptimizer(0.05).minimize(loss)
 sess.run(tf.global_variables_initializer())
 # Line below added from tensorboard helper screen
 sess = tf_debug.TensorBoardDebugWrapperSession(sess, "User-PC:7000")
-    
+
 for i in range(50):
     xs = np.random.randn(num_examples, 3)
     ys = np.matmul(xs, k_true) + b_true
 
     loss_val, _ = sess.run([loss, train_op], feed_dict = {x: xs, y: ys})
     print("Iteration %d: loss = %g" % (i, loss_val))
-
