@@ -7,6 +7,8 @@ set wildmenu
 set showcmd
 set hlsearch
 
+color desert
+
 set ignorecase
 set smartcase
 set backspace=indent,eol,start
@@ -21,3 +23,7 @@ map <Leader>s :SlimuxREPLSendLine<CR>
 vmap <Leader>s :SlimuxREPLSendSelection<CR>
 map <Leader>a :SlimuxShellLast<CR>
 map <Leader>k :SlimuxSendKeysLast<CR>
+
+map <Leader>c :SlimuxShellRun cpaste
+map <Leader>e :SlimuxShellRun --
+map <Leader>p :SlimuxShellConfigure
