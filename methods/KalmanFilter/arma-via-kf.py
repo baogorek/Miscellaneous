@@ -62,14 +62,13 @@ class AR1MA2_easy(MLEModel):
 
         self['transition', 0, 0] = params[0]
 
-        # Option A
         self['selection', 1, 0] = params[1]
         self['selection', 2, 0] = params[2]
         self['state_cov', 0, 0] = params[3]
 
 kf_model_easy = AR1MA2_easy(y)
 # Without fitting the model, here is a way to get the likelihood w starting val
-kf_model_easy.loglikeobs(kf_model_easy.start_params)
+kf_model_easy.loglikeobs(kf_model_easy.start_params)[0:5]
 
 kf_model_easy_fit = kf_model_easy.fit()
 kf_model_easy_fit.summary()
@@ -125,7 +124,38 @@ class AR1MA2_hard(MLEModel):
         self['state_cov', 2, 2] = params[3] * params[2] ** 2
 
 kf_model_hard = AR1MA2_hard(y)
-kf_model_hard.loglikeobs(kf_model_hard.start_params)
+kf_model_hard.loglikeobs(kf_model_hard.start_params)[0:5]
+filtered = kf_model_hard.filter(kf_model_hard.start_params)
+
+A = kf_model_hard['transition', 0:, 0:]
+H = kf_model_hard['design', 0:, 0:]
+Q = kf_model_hard['state_cov', 0:, 0:]
+R = kf_model_hard['obs_cov', 0:, 0:]
+
+HA = np.matmul(H, A)
+
+np.log(norm.pdf(y[0], 0, 1))
+
+mu_0 = filtered.filtered_state[0:, 0]
+Sigma_0 = filtered.filtered_state_cov[0:, 0:, 0]
+
+E_alpha_1 = np.matmul(np.matmul(H, A), mu_0)
+V_alpha_1 = (np.matmul(np.matmul(HA, Sigma_0), np.transpose(HA)) + 
+             np.matmul(np.matmul(H, Q), np.transpose(H)) + R)
+
+np.log(norm.pdf(y[1], E_alpha_1, np.sqrt(V_alpha_1)))
+
+mu_1 = filtered.filtered_state[0:, 1]
+Sigma_1 = filtered.filtered_state_cov[0:, 0:, 1]
+
+E_alpha_2 = np.matmul(np.matmul(H, A), mu_1)
+V_alpha_2 = (np.matmul(np.matmul(HA, Sigma_1), np.transpose(HA)) + 
+             np.matmul(np.matmul(H, Q), np.transpose(H)) + R)
+
+np.log(norm.pdf(y[2], E_alpha_2, np.sqrt(V_alpha_2)))
+
+
+
 
 kf_model_hard_fit = kf_model_hard.fit()
 kf_model_hard_fit.summary()
