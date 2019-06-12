@@ -35,6 +35,3 @@ for i in range(50):
 
     loss_val, _ = sess.run([loss, train_op], feed_dict = {x: xs, y: ys})
     print("Iteration %d: loss = %g" % (i, loss_val))
-
-
-
