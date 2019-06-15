@@ -39,9 +39,9 @@ class AR1MA2_verbose(MLEModel):
         self['selection', 1, 1] = 1.0 
         self['selection', 2, 2] = 1.0 
 
-        self.initialize_known(np.array([0, 0, 0]), np.eye(3))
+        #self.initialize_known(np.array([0, 0, 0]), np.eye(3))
         #self.initialize_stationary() # replicates the likelihood of ARMA fit
-        #self.initialize_approximate_diffuse() # How much worse is it?
+        self.initialize_approximate_diffuse() # How much worse is it?
 
     # Note: the transform and untransform steps are crucial for ML to work
     def transform_params(self, params):
