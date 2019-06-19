@@ -8,25 +8,44 @@ library(nlme)
 
 mu <- 496
 theta1 <- exp(-1 / 60) 
-theta2 <- exp(-1 / 30)
+theta2 <- exp(-1 / 13)
 k1 <- .07 
 k2 <- -.27 
+#Theoretical coefficient for intercept is
+-1. * mu * (-1 + theta1 + theta2 - theta1 * theta2)
 
-cat("Theoretical coefficient for intercept is\n",
-    -mu * (-1 + theta1 + theta2 - theta1 * theta2), "\n")
+#Theoretical coefficient for performance lagged once is
+theta1 + theta2
 
-cat("Theoretical coefficient for performance lagged once is\n",
-    theta1 + theta2, "\n")
+#Theoretical coefficient for performance lagged twice is
+-1. * theta1 * theta2
 
-cat("Theoretical coefficient for performance lagged twice is\n",
-    -theta1 * theta2, "\n")
+#Theoretical coefficient for training lagged once is
+k1 * theta1 + k2 * theta2
 
-cat("Theoretical coefficient for training lagged once is\n",
-    k1 * theta1 + k2 * theta2, "\n")
+#Theoretical coefficient for training lagged twice is
+-1. * theta1 * theta2 * (k2 + k1)
 
-cat("Theoretical coefficient for training lagged twice is\n",
-    -theta1 * theta2 * (k2 + k1), "\n")
+# run code here: https://gist.github.com/baogorek/6d682e42079005b3bde951e98ebae89e
+# or get file here: https://drive.google.com/open?id=1kk40wiVYzPXOkrPffU55Vzy-LLTrgAVh
+train_df <- read.csv("/mnt/c/devl/data/train_df.csv")
 
+train_aug <- train_df %>%
+  mutate(perf_lag1 = lag(perf, n = 1, order_by = day),
+         perf_lag2 = lag(perf, n = 2, order_by = day),
+         train_lag1 = lag(w, n = 1, order_by = day),
+         train_lag2 = lag(w, n = 2, order_by = day))
+
+my_gls <- gls(perf ~ perf_lag1 + perf_lag2 + train_lag1 + train_lag2,
+              data = train_aug[3:nrow(train_aug), ],
+              corARMA(form = ~day, p = 0, q = 2))
+summary(my_gls)
+
+my_lm <- lm(perf ~ perf_lag1 + perf_lag2 + train_lag1 + train_lag2,
+            data = train_aug[3:nrow(train_aug), ])
+summary(my_lm)
+
+# Longer code from working through stages
 
 train_df <- read.csv("/mnt/c/devl/data/train_df.csv")
 
