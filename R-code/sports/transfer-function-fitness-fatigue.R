@@ -3,28 +3,30 @@
 
 library(dplyr)
 library(nlme)
+train_df <- read.csv("/mnt/c/devl/data/train_df.csv")
+head(train_df)
 
-# Regression parameters:
-
+# True parameter values:
 mu <- 496
 theta1 <- exp(-1 / 60) 
 theta2 <- exp(-1 / 13)
 k1 <- .07 
-k2 <- -.27 
+k2 <- .27 
+
 #Theoretical coefficient for intercept is
--1. * mu * (-1 + theta1 + theta2 - theta1 * theta2)
+(1 - theta1) * (1 - theta2) * mu
 
 #Theoretical coefficient for performance lagged once is
 theta1 + theta2
 
 #Theoretical coefficient for performance lagged twice is
--1. * theta1 * theta2
+-theta1 * theta2
 
 #Theoretical coefficient for training lagged once is
-k1 * theta1 + k2 * theta2
+k1 * theta1 - k2 * theta2
 
 #Theoretical coefficient for training lagged twice is
--1. * theta1 * theta2 * (k2 + k1)
+-theta1 * theta2 * (k1 - k2)
 
 # run code here: https://gist.github.com/baogorek/6d682e42079005b3bde951e98ebae89e
 # or get file here: https://drive.google.com/open?id=1kk40wiVYzPXOkrPffU55Vzy-LLTrgAVh
