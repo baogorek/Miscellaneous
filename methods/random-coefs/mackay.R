@@ -6,6 +6,10 @@ summary(lm(Reaction ~ Days, data = sleepstudy))
 fm1 <- lmer(Reaction ~ 1 + Days + (1 + Days | Subject), sleepstudy)
 summary(fm1)
 
+vcov(fm1) # Fixed effects variance covariance matrix
+VarCorr(fm1) # Random effects variance covariance matrix
+x = VarCorr(fm1)
+var(ranef(fm1)$Subject)
 
 n_subjects <- length(table(sleepstudy$Subject))
 subject_ids <- names(table(sleepstudy$Subject))
