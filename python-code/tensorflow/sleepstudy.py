@@ -43,16 +43,18 @@ V = np.kron(np.identity(N), Sigma_inv)
 # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4217225/#R17
 Xt = np.transpose(X)
 Zt = np.transpose(Z)
-XtX = np.matmul(Xt, X)
-XtZ = np.matmul(Xt, Z)
-ZtX = np.transpose(XtZ)
-ZtZ_plus_Sigma = np.matmul(Zt, Z) + V
+XtX_s = np.matmul(Xt, X) / sigma2_epsilon
+XtZ_s = np.matmul(Xt, Z) / sigma2_epsilon
+ZtX_s = np.matmul(Zt, X) / sigma2_epsilon
+ZtZ_s_plus_Sigma = np.matmul(Zt, Z) / sigma2_epsilon + V
 
-XandZ = np.hstack((X, Z))
-XtoverZt = np.vstack((Xt, Zt))
-D = np.vstack((np.hstack((XtX, XtZ)), np.hstack((ZtX, ZtZ_plus_Sigma))))
-H = np.matmul(np.matmul(XandZ, D), XtoverZt)
-np.trace(H)  # TODO: Problem!
+X_and_Z = np.hstack((X, Z))
+Xt_over_Zt_s = np.vstack((Xt, Zt)) / sigma2_epsilon
+D = np.vstack((np.hstack((XtX_s, XtZ_s)),
+               np.hstack((ZtX_s, ZtZ_s_plus_Sigma))))
+D_inv = np.linalg.inv(D)
+H = np.matmul(np.matmul(X_and_Z, D_inv), Xt_over_Zt_s)
+np.trace(H) 
 # Tensorflow time
 import tensorflow as tf
 
