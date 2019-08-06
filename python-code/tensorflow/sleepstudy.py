@@ -13,20 +13,28 @@ class SleepReg(tf.Module):
 
         self.set_optimizer() # Last Tensorflow-specific optimization
 
-        # Initializing Sigma_b and sigmasq_epsilon to lme4's output for demo
-        self.Sigma_b = np.array([[24.7404 ** 2, .066 * 5.9221 * 24.7404],
-                                [.066 * 24.7404 * 5.9221, 5.9221 ** 2]])
-        self.sigmasq_epsilon = 25.5918 ** 2 
-
         self.data = self.get_sleepstudy_data(sleepdata_path)
         self.N_subjects = 18
 
         self.y = self.data.Reaction.values.reshape((180, 1))
         self.X = self.get_X_matrix()
         self.Z = self.get_Z_matrix()
-        
+ 
+        # Initializing Sigma_b and sigmasq_epsilon to lme4's output for demo
+        self.Sigma_b = np.array([[24.7404 ** 2, .066 * 5.9221 * 24.7404],
+                                [.066 * 24.7404 * 5.9221, 5.9221 ** 2]])
+        self.sigmasq_epsilon = 25.5918 ** 2 
+       
         self.V = self.get_V_matrix()
-        
+        self.H = self.get_H_matrix()
+        self.df = self.get_approximate_df()
+
+    def reset_variances(self, Sigma_b, sigmasq_epsilon):
+        self.Sigma_b = Sigma_b
+        self.sigmasq_epsilon = sigmasq_epsilon
+
+        # Update matrices that depend on these variances 
+        self.V = self.get_V_matrix()
         self.H = self.get_H_matrix()
         self.df = self.get_approximate_df()
 
@@ -114,12 +122,21 @@ class SleepReg(tf.Module):
         bTVb = tf.matmul(bTV, b)
         return tf.squeeze(bTVb)
 
+    def _get_neg_log_prior2(self, b, sigmasq_int, sigmasq_slope):
+        """ Get sum of squares penalty from b as a tensorflow variable"""
+        re_mat = np.reshape(tf.squeeze(b), (self.N_subjects, 2))
+
+        int_penalty = tf.reduce_sum(tf.square(re_mat[:, 0])) / sigmasq_int
+        slope_penalty = tf.reduce_sum(tf.square(re_mat[:, 1])) / sigmasq_slope
+
+        return int_penalty + slope_penalty 
+
     def set_optimizer(self, adam=False):
         """Choose optimizer for the model training task."""
         self.optimizer = (tf.optimizers.Adam() if adam else
                           tf.optimizers.SGD(learning_rate=.025, momentum=.98))
         
-    def train(self, epochs=2000):
+    def train(self, epochs=1500, display_beta=True):
         """Trains model using a TensorFlow training loop""" 
         X = tf.constant(self.X)
         Z = tf.constant(self.Z)
@@ -129,15 +146,20 @@ class SleepReg(tf.Module):
         for epoch in range(epochs):
             with tf.GradientTape() as gradient_tape:
                 y_pred = self._get_expectation(X, Z, self.beta, self.b) 
+                #loss = (self._get_sse(y, y_pred) / self.sigmasq_epsilon
+                #        + self._get_neg_log_prior(self.b, V))
                 loss = (self._get_sse(y, y_pred) / self.sigmasq_epsilon
-                        + self._get_neg_log_prior(self.b, V))
+                        + self._get_neg_log_prior2(self.b, self.Sigma_b[0, 0],
+                                                   self.Sigma_b[1, 1]))
+
 
             gradient = gradient_tape.gradient(loss, (
                 (self.trainable_variables[0], self.trainable_variables[1])
             ))
             self.optimizer.apply_gradients(zip(gradient,
                                                self.trainable_variables))
-            print(self.beta)
+
+            if display_beta: print(self.beta)
 
 
 #sleep_reg = SleepReg("/mnt/c/devl/data/sleepstudy.csv")
