@@ -122,12 +122,14 @@ class SleepReg(tf.Module):
     
     @tf.function
     def _get_neg_log_prior(self, b, V):
+        """Get the wieght pentalty from the full Guassian distribution"""
         bTV = tf.matmul(tf.transpose(b), V)
         bTVb = tf.matmul(bTV, b)
         return tf.squeeze(bTVb)
 
+    #@tf.function # Why won't this work?
     def _get_mackay_penalty(self, b, sigmasq_int, sigmasq_slope):
-        """ Get sum of squares penalty from b as a tensorflow variable"""
+        """Get sum of squares penalty from b as a tensorflow variable"""
         re_mat = np.reshape(tf.squeeze(b), (self.N_subjects, 2))
 
         int_penalty = tf.reduce_sum(tf.square(re_mat[:, 0])) / sigmasq_int
@@ -146,15 +148,16 @@ class SleepReg(tf.Module):
         Z = tf.constant(self.Z)
         y = tf.constant(self.y)
         V = tf.constant(self.V)
+        sigmasq_int = tf.constant(self.Sigma_b[0, 0])
+        sigmasq_slope = tf.constant(self.Sigma_b[0, 0])
 
         for epoch in range(epochs):
             with tf.GradientTape() as gradient_tape:
                 y_pred = self._get_expectation(X, Z, self.beta, self.b) 
                 if mackay:
                     loss = (self._get_sse(y, y_pred) / self.sigmasq_epsilon
-                            + self._get_mackay_penalty(self.b,
-                                                       self.Sigma_b[0, 0],
-                                                       self.Sigma_b[1, 1]))
+                            + self._get_mackay_penalty(self.b, sigmasq_int,
+                                                       sigmasq_slope))
                 else:
                     loss = (self._get_sse(y, y_pred) / self.sigmasq_epsilon
                             + self._get_neg_log_prior(self.b, V))
