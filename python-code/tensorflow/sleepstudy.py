@@ -7,11 +7,11 @@ import tensorflow as tf
 class SleepReg(tf.Module):
     def __init__(self, sleepdata_path):
         """Initializing tensorflow variables and other necessary matrices"""
-        # The two TensorFlow variables show up in the trainable_variables prop
+        # These two TensorFlow variables show up in the trainable_variables
         self.beta = tf.Variable(tf.zeros([2, 1], dtype=tf.float64))
         self.b = tf.Variable(tf.zeros([36, 1], dtype=tf.float64))
 
-        self.set_optimizer() # Last Tensorflow-specific optimization
+        self.set_optimizer()
 
         self.data = self.get_sleepstudy_data(sleepdata_path)
         self.N_subjects = 18
@@ -68,7 +68,7 @@ class SleepReg(tf.Module):
         return Z
 
     def get_V_matrix(self):
-        """ """
+        """Get inverse random effects vector variance matrix"""
         Sigma_b_inv = np.linalg.inv(self.Sigma_b)
         V = np.kron(np.identity(self.N_subjects), Sigma_b_inv)
         return V
@@ -101,7 +101,8 @@ class SleepReg(tf.Module):
         rand_effs = np.reshape(b_hat, (self.N_subjects, 2))
         return pd.DataFrame(rand_effs, columns = ['mu', 'b'])
 
-    def estimate_Sigma_b(self):
+    def get_rnd_effs_variance(self):
+        """Returns variance matrix of computed random effects"""
         rand_effs = self.get_random_effects()
         return np.cov(rand_effs, rowvar=False)
 
@@ -127,22 +128,12 @@ class SleepReg(tf.Module):
         bTVb = tf.matmul(bTV, b)
         return tf.squeeze(bTVb)
 
-    #@tf.function # Why won't this work?
-    def _get_mackay_penalty(self, b, sigmasq_int, sigmasq_slope):
-        """Get sum of squares penalty from b as a tensorflow variable"""
-        re_mat = np.reshape(tf.squeeze(b), (self.N_subjects, 2))
-
-        int_penalty = tf.reduce_sum(tf.square(re_mat[:, 0])) / sigmasq_int
-        slope_penalty = tf.reduce_sum(tf.square(re_mat[:, 1])) / sigmasq_slope
-
-        return int_penalty + slope_penalty 
-
     def set_optimizer(self, adam=False):
         """Choose optimizer for the model training task."""
         self.optimizer = (tf.optimizers.Adam() if adam else
                           tf.optimizers.SGD(learning_rate=.025, momentum=.98))
         
-    def train(self, epochs=1500, display_beta=True, mackay=False):
+    def train(self, epochs=1500, display_beta=True):
         """Trains model using a TensorFlow training loop""" 
         X = tf.constant(self.X)
         Z = tf.constant(self.Z)
@@ -154,20 +145,13 @@ class SleepReg(tf.Module):
         for epoch in range(epochs):
             with tf.GradientTape() as gradient_tape:
                 y_pred = self._get_expectation(X, Z, self.beta, self.b) 
-                if mackay:
-                    loss = (self._get_sse(y, y_pred) / self.sigmasq_epsilon
-                            + self._get_mackay_penalty(self.b, sigmasq_int,
-                                                       sigmasq_slope))
-                else:
-                    loss = (self._get_sse(y, y_pred) / self.sigmasq_epsilon
-                            + self._get_neg_log_prior(self.b, V))
+                loss = (self._get_sse(y, y_pred) / self.sigmasq_epsilon
+                        + self._get_neg_log_prior(self.b, V))
 
             gradient = gradient_tape.gradient(loss, (
                 (self.trainable_variables[0], self.trainable_variables[1])
             ))
             self.optimizer.apply_gradients(zip(gradient,
                                                self.trainable_variables))
-
-            if display_beta: print(self.beta)
-
-
+            if display_beta:
+                print(self.beta)
