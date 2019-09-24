@@ -27,3 +27,6 @@ map <Leader>k :SlimuxSendKeysLast<CR>
 map <Leader>c :SlimuxShellRun cpaste<CR>
 map <Leader>e :SlimuxShellRun --<CR>
 map <Leader>p :SlimuxShellConfigure<CR>
+
+map <Leader>1 :SlimuxShellRun %load_ext autoreload<CR>
+map <Leader>2 :SlimuxShellRun %autoreload 2<CR>
