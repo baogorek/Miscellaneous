@@ -1,8 +1,14 @@
-call plug#begin('C:\Users\baogo\AppData\Local\nvim\plugged')
+" init.vim for NeoVim
+" Prereqs: Have Vim-Plug installed, as well at Git
 
-Plug 'Vigemus/iron.nvim'
+call plug#begin('C:\Users\..\AppData\Local\nvim\plugged')
+
+Plug 'hkupty/iron.nvim'
+Plug 'hkupty/nvimux'
 
 call plug#end()
+
+
 luafile C:\Users\baogo\AppData\Local\nvim\plugins.lua
 
 function! Show_position()
