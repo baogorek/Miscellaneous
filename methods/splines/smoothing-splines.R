@@ -1,26 +1,38 @@
+library(splines)
 library(dplyr)
+#library(splines2)
+#https://cran.r-project.org/web/packages/splines2/vignettes/splines2-intro.html
 
-require(graphics)
+
 plot(dist ~ speed, data = cars, main = "data(cars)  &  smoothing splines")
 cars.spl <- smooth.spline(x=cars$speed, y=cars$dist, all.knots=TRUE)
 cars.spl
+# Penalized Criterion RSS said to be 4187.776
 
 cars.spl$fit # has knots and coefs in there
 
-knots = cars.spl$fit$knot
+knots <- cars.spl$fit$knot
+
 coef <- cars.spl$fit$coef
 a <- cars.spl$fit$min
 b <- cars.spl$fit$min + cars.spl$fit$range
 
-library(splines)
 x <- (cars$speed - a) / cars.spl$fit$range
 bsplinemat <- bs(cars$speed, knots=unique(cars$speed)[2:18],
                  Boundary.knots = c(4, 25), intercept=TRUE, degree=3)
 
-using_bspline <- bsplinemat %*% coef %>% as.numeric()
-using_pred <- predict(cars.spl, x=cars$speed)$y
-all(abs(using_bspline - using_pred) < 1E-6) # Woo hoo!
+bsplinemat2 <- bSpline(cars$speed, knot=unique(cars$speed)[2:18], degree = 3,
+		       intercept = TRUE, Boundary.knots = c(4, 25)) # from splines2
 
+
+matplot(cars$speed, bsplinemat2, type = "l", ylab = "y")
+
+using_bspline <- bsplinemat %*% coef %>% as.numeric()
+using_bspline2 <- bsplinemat2 %*% coef %>% as.numeric()
+using_pred <- predict(cars.spl, x=cars$speed)$y
+
+all(abs(using_bspline - using_pred) < 1E-6) # Woo hoo!
+all(abs(using_bspline - using_bspline2) < 1E-6)
 
 # Prediction on a point that's not in the data
 newspeed <- c(10.5, 11.5)
@@ -33,66 +45,109 @@ newpreds <- predict(cars.spl, x = data.frame(speed = newspeed),
 
 all(abs(new_using_bspline - newpreds) < 1E-6) # Woo hoo!
 
+# RSS seemes a little high
+sum((using_pred - cars$dist) ** 2)
+
+# 2nd derivative of bsplines, from splines2
+bsdoubleprime <- dbs(cars$speed, derivs=2, knot=unique(cars$speed)[2:18], degree=3,
+    intercept = TRUE, Boundary.knots=c(4, 25))
+fdoubleprime <- bsdoubleprime %*% coef # This is f"(s) evaluated at speeds
+
+# Calculating the squared second derivative of f with its own resolution
+delta <- .1
+s <- seq(4, 25, delta)
+
+bsdoubleprime <- dbs(s, derivs=2, knot=unique(cars$speed)[2:18], degree=3,
+    intercept = TRUE, Boundary.knots=c(4, 25))
 
 
+# Trying it out
+fdoubleprime <- bsdoubleprime %*% coef # This is f"(s) evaluated at speeds cars$speed, and there are dupes
+fdoubleprime_sq <- fdoubleprime ** 2 %>% as.numeric()
+plot(fdoubleprime_sq ~ s)
+integral2 <- sum(fdoubleprime_sq * delta)
+integral2
 
-# Predict on the points.
-# Not much to see in here. It's just grabbing x and y from fit
-preds <- predict(cars.spl)
-points(preds, color='blue', type='l')
+# Had to dig into the bs function to figure out how to use splineDesign
+ord <- 4 # order of a cubic spline
+boundary_knots <- c(4, 25)
+knots <- unique(cars$speed)[2:18]
+Aknots <- sort(c(rep(boundary_knots, ord), knots)) # put the boundary knots back on 4 times!
 
-# Predict on new points
-r = diff(range(cars$speed))
+basis <- splineDesign(Aknots, s, ord, derivs=0)
+deriv2basis <- splineDesign(Aknots, s, ord, derivs=2)
+fdoubleprime <- deriv2basis %*% coef # This is f"(s) evaluated at speeds
+f <- basis %*% coef # This is f(s) evaluated at speeds
+integral <- sum(fdoubleprime ** 2 * delta)
+integral
 
-cars.spl$fit$knot
+plot(f ~ s)
+points(cars$dist ~ cars$speed)
 
-unique(min(cars$speed) + r * cars.spl$fit$knot)
-unique(cars$speed)
-# Goal: reproduce preds with knots
+# empirical test - not quite right
+s_unique <- sort(unique(using_pred))
+dist_pred_unique <- predict(cars.spl, x=s_unique)$y
+plot(dist_pred_unique)
+plot(diff(dist_pred_unique))
+plot(diff(diff(dist_pred_unique)))
 
-# here's the function that I'm interested in
-#debugging in: predict.smooth.spline.fit(fit, x, deriv, ...)
 
+empirical_deriv <- diff(diff(dist_pred_unique))
+plot(fdoubleprime ~ s)
+plot(c(NA, NA, empirical_deriv) ~ s_unique)
 
-# Arguments
-object <- cars.spl$fit
-x <- c(10.5, 11.5)
+# empirical integral
+sum(empirical_deriv ** 2 * diff(s_unique)[2:18])
 
-# The interpolation functionality
-xs <- (x - object$min)/object$range # put x's in [0, 1] (like paper)
+# Revisiting the smooth.spline fit
+fitted_coefs <- cars.spl$fit$coef
 
-# For every point, are we extrapolating to the left or right, or interpolating?
-extrap.left <- xs < 0
-extrap.right <- xs > 1
-interp <- !(extrap <- extrap.left | extrap.right)
-
-# Focus on the interpolations
-n <- sum(interp)
-y <- xs
-if (any(interp))
-    y[interp] <- .Fortran(C_bvalus, n = as.integer(n), knot = as.double(object$knot),
-        coef = as.double(object$coef), nk = as.integer(object$nk),
-        x = as.double(xs[interp]), s = double(n), order = as.integer(deriv))$s
-#Extrapolations are easy
-if (any(extrap)) {
-    xrange <- c(object$min, object$min + object$range)
-    if (deriv == 0) {
-        end.object <- Recall(object, xrange)$y
-        end.slopes <- Recall(object, xrange, 1)$y * object$range
-        if (any(extrap.left))
-            y[extrap.left] <- end.object[1L] + end.slopes[1L] *
-              (xs[extrap.left] - 0)
-        if (any(extrap.right))
-            y[extrap.right] <- end.object[2L] + end.slopes[2L] *
-              (xs[extrap.right] - 1)
-    }
-    else if (deriv == 1) {
-        end.slopes <- Recall(object, xrange, 1)$y * object$range
-        y[extrap.left] <- end.slopes[1L]
-        y[extrap.right] <- end.slopes[2L]
-    }
-    else y[extrap] <- 0
+# Once the bs derivatives have been calculated, the pentalty function is easier
+penalty <- function(c) {
+  # c is a 21-length numeric vector for this specific cars example 
+  # bdoubleprime and delta come from the environment (keeping it simple)
+  fdoubleprime <- deriv2basis %*% c
+  fdoubleprime_sq <- fdoubleprime ** 2 %>% as.numeric()
+  sum(fdoubleprime_sq * delta)
 }
-if (deriv > 0)
-    y <- y/(object$range^deriv)
-list(x = x, y = y)
+
+sse <- function(c) {
+  # Sum of squared errors given car speed specific 21-length b-spline coef vector c
+  # cars data set assumed to be in the environment
+  f <- bsplinemat %*% c %>% as.numeric()
+  y <- cars$dist
+  sum((y - f) ** 2)
+}
+
+lambda <- 1000 # 1000 works pretty well
+objective <- function(c) {
+   # Now lamda is assumed to be in the environment! (quick and dirty)
+   sse(c) + lambda * penalty(c) 
+}
+
+sse(coef)
+penalty(coef)
+objective(coef)
+
+# Now, with the specific lambda in hand, trying to do the penalized optimization
+c_starting <- coef + 3 * rnorm(21) # rep(0, 21)
+objective(c_starting)
+
+opt <- optim(c_starting, objective, method='L-BFGS-B', control = list(maxit = 1000), lower=0)
+coef <- opt$par
+
+plot(coef ~ fitted_coefs, main=paste('correlation: ', round(cor(coef, fitted_coefs), 5)))
+abline(a=0, b=1)
+
+
+f <- basis %*% coef # This is f(s) evaluated at speeds
+plot(f ~ s)
+points(cars$dist ~ cars$speed)
+
+
+f_opt <- bsplinemat %*% opt$par
+plot(cars$dist ~ cars$speed)
+lines(f_opt ~ cars$speed, col='blue')
+lines(using_pred ~ cars$speed, col='purple')
+
+
