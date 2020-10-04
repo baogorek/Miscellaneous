@@ -1,5 +1,4 @@
 library(dplyr)
-library(KFAS)
 
 source('helper-functions.R')
 source('sim.R')
@@ -46,13 +45,7 @@ tau_g <- 60
 tau_h <- 13 
 sigma_e <- 10
 
-# TODO: think about how to deal with the time index
-# You might want to create a set of numeric vectors out of the gate
-
-# prior distribution of fitness and fatigue
-mu_t <- c(500, 200)
-Sigma_t <- matrix(c(100 ^2, 0, 0, 50 ^2), ncol=2) # need a way to think about this prior
-
+# Time-stable Kalman Filter matrices -----------------------------------------
 # Transition matrix
 T_mat <- matrix(c(exp(-1 / tau_g), 0, 0, exp(-1 / tau_h)), ncol=2)
 
@@ -67,15 +60,44 @@ H_mat <- matrix(c(k_g, -k_h), ncol=2)
 Q_mat <- matrix(c(0, 0, 0, 0), ncol=2) #  0-state error for starters
 R_mat <- matrix(c(sigma_e ^ 2), ncol=1) #  0-state error for starters
 
-# Time t=2 is where things get started
-P_t <- T_mat %*% Sigma_t %*% t(T_mat) + Q_mat
-S_t <- H_mat %*% P_t %*% t(H_mat) + R_mat
+# Setting up structures to be predicted ----------------------------------
+log_likelihood <- numeric(T)
+log_likelihood[1] <- 0  # First is a prior only
 
-y_t <- training_df$perf[2]
-systematic <- u_mat[1, ] + T_mat %*% mu_t
-mu_t <- systematic + P_t %*% H_mat %*% solve(S_t) %*% (y_t - H_mat %*% systematic)  # TODO: something is wrong
-Sigma_t <- P_t - P_t %*% t(H_mat) %*% solve(S_t) %*% H_mat %*% P_t
+# Posterior mean and variance of state given all data up to time t := row
+mu <- matrix(rep(NA, 2 * T), ncol=2)  # I.e., fitness and fatigue
+Sigma <- matrix(rep(NA, 4 * T), ncol=4) # Rows contain vectorized Sigma_t
 
+# prior distribution of fitness and fatigue
+mu[1, ] <- c(500, 200)
+Sigma[1, ] <- c(25 ^ 2, 0, 0, 25 ^ 2)
 
-ffm <- SSModel(perf ~ 1 + SSMtrend(degree=1, Q=0), data = training_df)
+# State Prior to Likelihood to State Posterior - the Kalman updating equations
+for (t in 2:T) {
+  y_t <- training_df$perf[t]
+  Sigma_lag1 <- matrix(Sigma[t - 1, ], nrow=2)
+
+  # Prior mean and variance of state
+  systematic_t <- u_mat[t - 1, ] + T_mat %*% mu[t - 1, ]
+  P_t <- T_mat %*% Sigma_lag1 %*% t(T_mat) + Q_mat
+
+  # Likelihood of performance given systematic state update
+  log_likelihood[t] <- dnorm(y_t, p_0 + H_mat %*% systematic_t, R_mat, log=TRUE)
+  e_t <- y_t - (p_0 + H_mat %*% systematic_t)
+
+  # Posterior of state (fitness and fatigue) given all data up to time t
+  S_t <- H_mat %*% P_t %*% t(H_mat) + R_mat
+  S_t_inv <- solve(S_t)  # Computing inverses is discouraged, but here it's 1D
+  mu[t, ] <- (systematic_t + P_t %*% t(H_mat) %*% S_t_inv %*% e_t)
+  Sigma[t, ] <- as.vector(P_t - P_t %*% t(H_mat) %*% S_t_inv %*% H_mat %*% P_t)
+}
+
+perf_hat <- p_0 + mu %*% t(H_mat)  # Filtered predictions of performance
+
+plot(training_df$perf, main="Filtered predictions vs actuals")
+points(perf_hat, col='blue', type = 'b')
+
+plot(mu[, 1], col='blue', type='b', ylim=c(0, 3000),
+     main="Fitness (blue) and Fatigue (red)")
+points(mu[, 2], col='red', type='b')
 
