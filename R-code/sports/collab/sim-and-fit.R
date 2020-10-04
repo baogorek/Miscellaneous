@@ -48,7 +48,7 @@ fit <- stan('ffm.stan', data = stan_data, chains = 4, iter = 3000, warmup=2000, 
 
 # Diagnostics
 pars <- names(a)[1:6]
-pdf('plots/stanplot2.pdf')
+pdf('plots/stanplot3.pdf')
 plot(fit, pars  = pars, show_density=TRUE)
 plot(fit, plotfun = "hist", pars = pars, include = FALSE)
 plot(fit, plotfun = "trace", pars = pars, inc_warmup = TRUE)

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# INSTRUCTIONS:
+# While in this directory, run `source profile-setup.sh`
+
 cp .vimrc ~
 
 # Install Pathogen
