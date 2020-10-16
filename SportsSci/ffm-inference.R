@@ -3,7 +3,6 @@ library(dplyr)
 source('helper-functions.R')
 source('sim.R')
 
-
 # Simulating data --------------------------------------------------------------------
 load_spec <- list(list(start=3, end = 5, start_level=10, end_level=20, noise_sd = 0),
                   list(start=30, end = 100, start_level=50, end_level=50, noise_sd = 1))
@@ -28,12 +27,29 @@ optim_results <- optim(c(400, .05, .15, 20, sqrt(35)), rss, method = "BFGS",
 
 (theta_hat <- optim_results$par)
 
-training_df$perf_hat <- do.call(get_E_perf, append(list(w=training_df$w), as.list(theta_hat)))
+training_df$perf_hat <- do.call(get_E_perf, append(list(w=training_df$w),
+						   as.list(theta_hat)))
 
 plot(perf ~ t, data = training_df)
 points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
 
 # Fitting with Kalman Filter ------------------------------------------------
+
+training_df <- read.csv('training_df.csv')
+
+# Wikipedia equations
+#y_t <- training_df$perf[t]
+
+#x_t_apriori <- u_lag1 + T_mat %*% mu_lag1
+#P_t_apriori <- T_mat %*% Sigma_lag1 %*% t(T_mat) + Q_mat
+
+#y_t <- training_df$perf[t]
+
+#S_t <- H_mat %*% P_t_apriori %*% t(H_mat) + R_mat
+#K_t <- P_t_apriori %*% t(H_mat) %*% solve(S_t)
+
+#x_t_apost <- x_t_apriori + K_t %*% y_t
+#P_t_apost <- (diag(2) - K_t %*% H_mat) %*% P_t_apriori
 
 do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
 			  prior_mean_fitness=0, prior_mean_fatigue=0,
@@ -63,63 +79,51 @@ do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
   T_mat <- matrix(c(exp(-1 / tau_g), 0, 0, exp(-1 / tau_h)), ncol=2)
   
   # State intercept - each row is the fitness and fatigue effect to the next day's workout
-  u_mat <- matrix(rep(c(exp(-1 / tau_g), exp(-1 / tau_h)), T), ncol=2,
-  		byrow=TRUE) * training_df$w  # element-wise multiplication
-  
+  B_mat <- matrix(c(exp(-1 / tau_g), exp(-1 / tau_h)), ncol=1)
+ 
   # Measurement matrix
   H_mat <- matrix(c(k_g, -k_h), ncol=2)
   
   # Variance matrices
   Q_mat <- matrix(c(0, 0, 0, 0), ncol=2) #  0-state error for starters
   R_mat <- matrix(c(sigma_e ^ 2), ncol=1) # 1x1 matrix with meas.err. variance
+ 
+  # prior distribution of fitness and fatigue
+  mu0 <- c(prior_mean_fitness, prior_mean_fatigue)
+  Sigma0 <- matrix(c(prior_sd_fitness ^ 2,
+                   rep(prior_ff_corr * prior_sd_fitness * prior_sd_fatigue, 2),
+                   prior_sd_fatigue ^ 2), ncol=2)
   
   # Setting up structures to be predicted ----------------------------------
   log_likelihood <- numeric(T)
-  
-  # Posterior mean and variance of state given all data up to time t := row
+  state_intercept <- matrix(rep(NA, 2 * T), ncol=2)
   mu <- matrix(rep(NA, 2 * T), ncol=2)  # I.e., fitness and fatigue
   Sigma <- matrix(rep(NA, 4 * T), ncol=4) # Rows contain vectorized Sigma_t
-  
-  # prior distribution of fitness and fatigue
-  #TODO: I'm missing an opportunity to filter. mu[1, ] should be the filtered value, not the prior
-  mu[1, ] <- c(prior_mean_fitness, prior_mean_fatigue)
-  Sigma[1, ] <- c(prior_sd_fitness ^ 2,
-		  rep(prior_ff_corr * prior_sd_fitness * prior_sd_fatigue, 2),
-                  prior_sd_fatigue ^ 2) 
- 
-  # Initial log likelihood value
-  log_likelihood[1] <- dnorm(training_df$perf[1],
-			     mean = p_0 + H_mat %*% mu[1, ],
-			     sqrt(H_mat %*%
-				  solve(matrix(Sigma[1, ], ncol=2)) %*%
-				  t(H_mat) + R_mat[1, 1]), log=TRUE)
 
   # State Prior to Likelihood to State Posterior - the Kalman updating equations
-  for (t in 2:T) {
-    y_t <- training_df$perf[t]
-    Sigma_lag1 <- matrix(Sigma[t - 1, ], nrow=2)
-  
-    # Prior mean and variance of state
-    systematic_t <- u_mat[t - 1, ] + T_mat %*% mu[t - 1, ]
-    P_t <- T_mat %*% Sigma_lag1 %*% t(T_mat) + Q_mat
-  
+  for (t in 1:3) { # 4 is where the problem is
+    if (t == 1) { 
+      # Prior (a priori) mean and variance of state
+      systematic_t <- mu0
+      P_t <- Sigma0
+      state_intercept[1, ] <- c(0, 0)
+    } else {
+      cat('t=', t, ', systematic_t:', systematic_t, '\n')
+      state_intercept[t, ] <- as.numeric(B_mat * training_df$w[t - 1])
+      systematic_t <- as.matrix(state_intercept[t, ], ncol = 1) + T_mat %*% mu[t - 1, ]
+      P_t <- T_mat %*% matrix(Sigma[t - 1, ], ncol=2) %*% t(T_mat) + Q_mat
+    }
+ 
     # Likelihood of performance given systematic state update
-    log_likelihood[t] <- dnorm(y_t, mean=p_0 + H_mat %*% systematic_t,
-			       sd = sqrt(H_mat %*% solve(Sigma_lag1) %*%
-				         t(H_mat) + R_mat[1, 1]), log=TRUE)
+    y_t <- training_df$perf[t]
+    S_t <- H_mat %*% P_t %*% t(H_mat) + R_mat
     e_t <- y_t - (p_0 + H_mat %*% systematic_t)
+    log_likelihood[t] <- dnorm(e_t, mean = 0, sd = sqrt(S_t), log=TRUE)
   
     # Posterior of state (fitness and fatigue) given all data up to time t
-    S_t <- H_mat %*% P_t %*% t(H_mat) + R_mat
-    S_t_inv <- 1 / S_t  # solve(S_t) more generally, but it's 1-D
-    mu[t, ] <- (systematic_t + P_t %*% t(H_mat) %*% S_t_inv %*% e_t)
-    Sigma[t, ] <- as.vector(P_t - P_t %*% t(H_mat) %*% S_t_inv %*% H_mat %*% P_t)
-
-
-   dnorm(y_t, mean=p_0 + H_mat %*% mu[t, ],
-			       sd = sqrt(H_mat %*% solve(matrix(Sigma[t, ], ncol=2)) %*%
-				         t(H_mat) + R_mat[1, 1]), log=TRUE)
-
+    S_t_inv <- 1 / S_t  #  univariate inverse
+    mu[t, ] <- systematic_t + P_t %*% t(H_mat) %*% S_t_inv %*% e_t  # wrong at t = 4, right at t=1,2,3
+    Sigma[t, ] <- as.vector(P_t - P_t %*% t(H_mat) %*% S_t_inv %*% H_mat %*% P_t)  # Correct at t=4
   }
   
   perf_hat <- p_0 + mu %*% t(H_mat)  # Filtered predictions of performance
@@ -153,12 +157,11 @@ fit_ffm_via_kalman <- function(starting_theta,
 }
 
 # Fitting the FFM using the functions above ----------------------
-starting_theta <- c(400, .05, .15, 20, 5, sqrt(35))
+starting_theta <- c(450, .05, .15, 50, 15, sqrt(35))
 ffm_optim <- fit_ffm_via_kalman(starting_theta,
-		                prior_mean_fitness=0, prior_mean_fatigue=0,
-		                prior_sd_fitness=35, prior_sd_fatigue=35,
+		                prior_mean_fitness=500, prior_mean_fatigue=500,
+		                prior_sd_fitness=150, prior_sd_fatigue=150,
 		                prior_ff_corr=0)
-
 (theta_hat <- ffm_optim$par)
 
 
