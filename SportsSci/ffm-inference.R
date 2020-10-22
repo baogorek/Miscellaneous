@@ -4,8 +4,8 @@ source('helper-functions.R')
 source('sim.R')
 
 # Simulating data --------------------------------------------------------------------
-load_spec <- list(list(start=3, end = 5, start_level=10, end_level=20, noise_sd = 0),
-                  list(start=30, end = 100, start_level=50, end_level=50, noise_sd = 1))
+load_spec <- list(list(start = 3, end = 5, start_level=10, end_level=20, noise_sd = 0),
+                  list(start = 30, end = 100, start_level=50, end_level=50, noise_sd = 1))
 
 training_df <- simulate_ffm(T=200, load_spec=load_spec,
                             p_0=496, k_g=.07, k_h=.27, tau_g=60, tau_h=13,
@@ -35,7 +35,6 @@ points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
 
 # Fitting with Kalman Filter ------------------------------------------------
 
-training_df <- read.csv('training_df.csv')
 
 # Wikipedia equations
 #y_t <- training_df$perf[t]
@@ -50,6 +49,8 @@ training_df <- read.csv('training_df.csv')
 
 #x_t_apost <- x_t_apriori + K_t %*% y_t
 #P_t_apost <- (diag(2) - K_t %*% H_mat) %*% P_t_apriori
+
+training_df <- read.csv('training_df.csv')
 
 do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
 			  prior_mean_fitness=0, prior_mean_fatigue=0,
@@ -101,16 +102,15 @@ do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
   Sigma <- matrix(rep(NA, 4 * T), ncol=4) # Rows contain vectorized Sigma_t
 
   # State Prior to Likelihood to State Posterior - the Kalman updating equations
-  for (t in 1:3) { # 4 is where the problem is
+  for (t in 1:T) { # 4 is where the problem is
     if (t == 1) { 
       # Prior (a priori) mean and variance of state
       systematic_t <- mu0
       P_t <- Sigma0
       state_intercept[1, ] <- c(0, 0)
     } else {
-      cat('t=', t, ', systematic_t:', systematic_t, '\n')
       state_intercept[t, ] <- as.numeric(B_mat * training_df$w[t - 1])
-      systematic_t <- as.matrix(state_intercept[t, ], ncol = 1) + T_mat %*% mu[t - 1, ]
+      systematic_t <- T_mat %*% mu[t - 1, ] + as.matrix(state_intercept[t, ], ncol = 1)
       P_t <- T_mat %*% matrix(Sigma[t - 1, ], ncol=2) %*% t(T_mat) + Q_mat
     }
  
@@ -131,16 +131,29 @@ do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
   list(perf_hat=perf_hat, mu=mu, Sigma=Sigma, log_likelihood=log_likelihood)
 }
 
+# For matching Python with starting values:
+results <- do_ffm_kalman(training_df, 400, .05, .15, 20, 5, sqrt(35),
+			  prior_mean_fitness=0, prior_mean_fatigue=0,
+			  prior_sd_fitness=1, prior_sd_fatigue=1,
+			  prior_ff_corr=0)
+sum(results$log_likelihood)
+
+results <- do_ffm_kalman(training_df, 495.1478, .0797, .2679, 56.3461, 13.9621, sqrt(115.1329),
+			  prior_mean_fitness=0, prior_mean_fatigue=0,
+			  prior_sd_fitness=1, prior_sd_fatigue=1,
+			  prior_ff_corr=0)
+sum(results$log_likelihood)
+
 
 fit_ffm_via_kalman <- function(starting_theta,
 			       prior_mean_fitness=0, prior_mean_fatigue=0,
-			       prior_sd_fitness=25, prior_sd_fatigue=25,
+			       prior_sd_fitness=1, prior_sd_fatigue=1,
 			       prior_ff_corr=0) {
 
   get_negloglike <- function(theta) {
-    p_0  <- theta[1] # performance baseline
-    k_g   <- theta[2] # fitness weight
-    k_h   <- theta[3] # fatigue weight
+    p_0 <- theta[1] # performance baseline
+    k_g <- theta[2] # fitness weight
+    k_h <- theta[3] # fatigue weight
     tau_g <- theta[4] # fitness decay
     tau_h <- theta[5] # fatigue decay
     sigma_e <- theta[6] # standard deviation of error
@@ -150,19 +163,21 @@ fit_ffm_via_kalman <- function(starting_theta,
 			      prior_mean_fitness, prior_mean_fatigue,
 			      prior_sd_fitness, prior_sd_fatigue,
 			      prior_ff_corr)
-    -sum(filtered$log_likelihood)
+    -1.0 * sum(filtered$log_likelihood)
   }
   
-  optim(starting_theta, get_negloglike, method = "BFGS")
+  optim(starting_theta, get_negloglike, method = "BFGS",
+	control = list(maxit = 10000, reltol=1E-14))
 }
 
 # Fitting the FFM using the functions above ----------------------
-starting_theta <- c(450, .05, .15, 50, 15, sqrt(35))
+starting_theta <- c(400, .05, .15, 20, 5, sqrt(35))
 ffm_optim <- fit_ffm_via_kalman(starting_theta,
-		                prior_mean_fitness=500, prior_mean_fatigue=500,
-		                prior_sd_fitness=150, prior_sd_fatigue=150,
+		                prior_mean_fitness=0, prior_mean_fatigue=0,
+		                prior_sd_fitness=1, prior_sd_fatigue=1,
 		                prior_ff_corr=0)
-(theta_hat <- ffm_optim$par)
+theta_hat <- ffm_optim$par
+print(theta_hat)
 
 
 ffm_fit <- do_ffm_kalman(training_df, theta_hat[1], theta_hat[2], theta_hat[3],
