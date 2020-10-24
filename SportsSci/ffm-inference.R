@@ -11,6 +11,17 @@ training_df <- simulate_ffm(T=200, load_spec=load_spec,
                             p_0=496, k_g=.07, k_h=.27, tau_g=60, tau_h=13,
                             sigma_e=10, seed=255)
 
+
+load_spec <- list(list(start=3, end = 100, start_level=20, end_level=50, noise_sd = 1),
+                  list(start=100, end = 180, start_level=50, end_level=30, noise_sd = 1))
+
+training_df <- simulate_ffm(T=200, load_spec=load_spec,
+                            p_0=496, k_g=20 *.07, k_h=20*.27, tau_g=60, tau_h=13,
+                            sigma_e=10,
+                            delta = 20, gamma = 2.5,
+                            fitness_0 = 0, fatigue_0 = 0)
+
+
 # Fitting with R's optim and RSS loss ------------------------------------------------
 rss <- function(theta) {
   p_0  <- theta[1] # performance baseline
@@ -22,8 +33,8 @@ rss <- function(theta) {
   sum((training_df$perf - get_E_perf(training_df$w, p_0, k_g, k_h, tau_g, tau_h)) ^ 2)
 }
 
-optim_results <- optim(c(400, .05, .15, 20, sqrt(35)), rss, method = "BFGS",
-                       hessian = TRUE, control = list(maxit = 1000))
+optim_results <- optim(c(400, 20 * .05, 20 * .15, 20, sqrt(35)), rss, method = "BFGS",
+                       hessian = TRUE, control = list(maxit = 1000, reltol=1E-14))
 
 (theta_hat <- optim_results$par)
 
@@ -33,22 +44,88 @@ training_df$perf_hat <- do.call(get_E_perf, append(list(w=training_df$w),
 plot(perf ~ t, data = training_df)
 points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
 
+# Hill function using one-shot optim? ------------------------------------------------
+rss <- function(theta) {
+  p_0  <- theta[1] # performance baseline
+  k_g   <- theta[2] # fitness weight
+  k_h   <- theta[3] # fatigue weight
+  tau_g <- theta[4] # fitness decay
+  tau_h <- theta[5] # fatigue decay
+  gamma <- theta[6] # fatigue decay
+  delta <- theta[7] # fatigue decay
+  
+  w_hill <- hill_transform(training_df$w_raw, 1, gamma, delta)
+  sum((training_df$perf - get_E_perf(w_hill, p_0, k_g, k_h, tau_g, tau_h)) ^ 2)
+}
+
+optim_results <- optim(c(400, 20 * .05, 20 * .15, 20, sqrt(35), 3, 15), rss, method = "BFGS",
+                       hessian = TRUE, control = list(maxit = 1000, reltol=1E-14))
+
+optim_results
+(theta_hat <- optim_results$par)
+
+w_hill <- hill_transform(training_df$w_raw, 1, gamma=theta_hat[6], delta=theta_hat[7])
+training_df$perf_hat <- do.call(get_E_perf, append(list(w=w_hill),
+						   as.list(theta_hat[1:5])))
+
+plot(perf ~ t, data = training_df)
+points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
+
+# Hill function using profile likelihood -------------------------------------------
+
+combos <- expand.grid(gamma = c(1.5, 2.5, 5.0, 30), delta = c(1, 10, 20, 50, 100))
+combos['RSS'] <- NA
+combos['p_0'] <- NA
+combos['k_g'] <- NA
+combos['k_h'] <- NA
+combos['tau_g'] <- NA
+combos['tau_h'] <- NA
+
+for (i in 1:nrow(combos)) {
+  cat("Trying Hill function combination gamma =", gamma, ", delta =", delta, "\n")
+  gamma <- combos[i, 'gamma'] 
+  delta <- combos[i, 'delta'] 
+  
+  w_hill <- hill_transform(training_df$w_raw, 1, gamma, delta)
+  
+  rss <- function(theta) {
+    p_0  <- theta[1] # performance baseline
+    k_g   <- theta[2] # fitness weight
+    k_h   <- theta[3] # fatigue weight
+    tau_g <- theta[4] # fitness decay
+    tau_h <- theta[5] # fatigue decay
+    sum((training_df$perf - get_E_perf(w_hill, p_0, k_g, k_h, tau_g, tau_h)) ^ 2)
+  }
+  tryCatch({ 
+    optim_results <- optim(c(400, 20 * .05, 20 * .15, 20, sqrt(35)), rss, method = "BFGS",
+                           hessian = FALSE, control = list(maxit = 1000, reltol=1E-14))
+    
+    (theta_hat <- optim_results$par)
+    combos[i, 'RSS'] <- optim_results$value
+    combos[i, 'p_0'] <- optim_results$par[1] 
+    combos[i, 'k_g'] <- optim_results$par[2] 
+    combos[i, 'k_h'] <- optim_results$par[3] 
+    combos[i, 'tau_g'] <- optim_results$par[4] 
+    combos[i, 'tau_h'] <- optim_results$par[5] 
+  }, error = function(e) {
+    cat("--Problem optimizing for gamma =", gamma, ", delta =", delta, "\n")
+  })
+}
+
+best_row <- combos[which.min(combos$RSS), ]
+
+w_hill <- hill_transform(training_df$w_raw, 1, gamma=best_row$gamma, delta=best_row$delta)
+training_df$perf_hat <- get_E_perf(w=w_hill, p_0 = best_row$p_0,
+				   k_g = best_row$k_g, k_h = best_row$k_h,
+				   tau_g=best_row$tau_g, tau_h=best_row$tau_h)
+
+plot(perf ~ t, data = training_df)
+points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
+
+
+
 # Fitting with Kalman Filter ------------------------------------------------
 
-
-# Wikipedia equations
-#y_t <- training_df$perf[t]
-
-#x_t_apriori <- u_lag1 + T_mat %*% mu_lag1
-#P_t_apriori <- T_mat %*% Sigma_lag1 %*% t(T_mat) + Q_mat
-
-#y_t <- training_df$perf[t]
-
-#S_t <- H_mat %*% P_t_apriori %*% t(H_mat) + R_mat
-#K_t <- P_t_apriori %*% t(H_mat) %*% solve(S_t)
-
-#x_t_apost <- x_t_apriori + K_t %*% y_t
-#P_t_apost <- (diag(2) - K_t %*% H_mat) %*% P_t_apriori
 
 training_df <- read.csv('training_df.csv')
 

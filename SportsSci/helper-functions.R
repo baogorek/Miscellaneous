@@ -11,6 +11,9 @@ convolve_training <- function(w, tau) {
 
 
 get_E_perf <- function(w, p_0, k_g, k_h, tau_g, tau_h, fitness_0=0, fatigue_0=0) {
+  # w: vector of training implulses
+  # p_0, k_g, k_h, tau_g, tau_h: FFM parameters
+  # fitness_0, fatigue_0: optional starting values of fitness and fatigue
   T <- length(w)
   initial_fitness_effects <- fitness_0 * exp(-(1:T) / tau_g)
   initial_fatigue_effects <- fatigue_0 * exp(-(1:T) / tau_h)
@@ -22,7 +25,13 @@ get_E_perf <- function(w, p_0, k_g, k_h, tau_g, tau_h, fitness_0=0, fatigue_0=0)
   p_0 + k_g * fitness - k_h * fatigue
 }
 
-# Testing
+hill_transform <- function(w, kappa, gamma, delta) {
+  # w: vector (or scalar) of training implulses
+  # kappa, gamma, delta: Hill function parameters
+  kappa * w ^ gamma / (w ^ gamma +  delta ^ gamma)
+}
+
+# Testing -----------------------------------------------------------------
 
 # test 1 - third performance periods needs two lagged training periods
 exp_2days <- c(exp(-2 / 1.5), exp(-1 / 1.5))
