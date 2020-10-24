@@ -3,7 +3,7 @@ library(dplyr)
 source('helper-functions.R')
 source('sim.R')
 
-# Simulating data --------------------------------------------------------------------
+# Simulation 1: basic FFM and Min MSE (same as ML) ---------------------------------------
 load_spec <- list(list(start = 3, end = 5, start_level=10, end_level=20, noise_sd = 0),
                   list(start = 30, end = 100, start_level=50, end_level=50, noise_sd = 1))
 
@@ -11,18 +11,7 @@ training_df <- simulate_ffm(T=200, load_spec=load_spec,
                             p_0=496, k_g=.07, k_h=.27, tau_g=60, tau_h=13,
                             sigma_e=10, seed=255)
 
-
-load_spec <- list(list(start=3, end = 100, start_level=20, end_level=50, noise_sd = 1),
-                  list(start=100, end = 180, start_level=50, end_level=30, noise_sd = 1))
-
-training_df <- simulate_ffm(T=200, load_spec=load_spec,
-                            p_0=496, k_g=20 *.07, k_h=20*.27, tau_g=60, tau_h=13,
-                            sigma_e=10,
-                            delta = 20, gamma = 2.5,
-                            fitness_0 = 0, fatigue_0 = 0)
-
-
-# Fitting with R's optim and RSS loss ------------------------------------------------
+## Fitting with R's optim and RSS loss ------------------------------------------------
 rss <- function(theta) {
   p_0  <- theta[1] # performance baseline
   k_g   <- theta[2] # fitness weight
@@ -33,7 +22,8 @@ rss <- function(theta) {
   sum((training_df$perf - get_E_perf(training_df$w, p_0, k_g, k_h, tau_g, tau_h)) ^ 2)
 }
 
-optim_results <- optim(c(400, 20 * .05, 20 * .15, 20, sqrt(35)), rss, method = "BFGS",
+# Increase the coefficients since Hill transform has decreased training impulse
+optim_results <- optim(c(400, 20 * .05, 20 * .15, 20, 10), rss, method = "BFGS",
                        hessian = TRUE, control = list(maxit = 1000, reltol=1E-14))
 
 (theta_hat <- optim_results$par)
@@ -44,7 +34,19 @@ training_df$perf_hat <- do.call(get_E_perf, append(list(w=training_df$w),
 plot(perf ~ t, data = training_df)
 points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
 
-# Hill function using one-shot optim? ------------------------------------------------
+
+# Simulation 2: Using Hill function ---------------------------------------------
+load_spec <- list(list(start=3, end = 100, start_level=20, end_level=50, noise_sd = 1),
+                  list(start=100, end = 180, start_level=50, end_level=30, noise_sd = 1))
+
+training_df <- simulate_ffm(T=200, load_spec=load_spec,
+                            p_0=496, k_g=20 *.07, k_h=20*.27, tau_g=60, tau_h=13,
+                            sigma_e=10,
+                            delta = 20, gamma = 2.5,
+                            fitness_0 = 0, fatigue_0 = 0)
+
+
+## Bad Optimization: Hill function using one-shot optim ---------------------------------
 rss <- function(theta) {
   p_0  <- theta[1] # performance baseline
   k_g   <- theta[2] # fitness weight
@@ -58,7 +60,7 @@ rss <- function(theta) {
   sum((training_df$perf - get_E_perf(w_hill, p_0, k_g, k_h, tau_g, tau_h)) ^ 2)
 }
 
-optim_results <- optim(c(400, 20 * .05, 20 * .15, 20, sqrt(35), 3, 15), rss, method = "BFGS",
+optim_results <- optim(c(400, 20 * .05, 20 * .15, 30, 10, 3, 15), rss, method = "BFGS",
                        hessian = TRUE, control = list(maxit = 1000, reltol=1E-14))
 
 optim_results
@@ -71,7 +73,7 @@ training_df$perf_hat <- do.call(get_E_perf, append(list(w=w_hill),
 plot(perf ~ t, data = training_df)
 points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
 
-# Hill function using profile likelihood -------------------------------------------
+## Better Optimization: Hill function using profile likelihood ---------------------------
 
 combos <- expand.grid(gamma = c(1.5, 2.5, 5.0, 30), delta = c(1, 10, 20, 50, 100))
 combos['RSS'] <- NA
@@ -97,7 +99,7 @@ for (i in 1:nrow(combos)) {
     sum((training_df$perf - get_E_perf(w_hill, p_0, k_g, k_h, tau_g, tau_h)) ^ 2)
   }
   tryCatch({ 
-    optim_results <- optim(c(400, 20 * .05, 20 * .15, 20, sqrt(35)), rss, method = "BFGS",
+    optim_results <- optim(c(400, 20 * .05, 20 * .15, 30, 10), rss, method = "BFGS",
                            hessian = FALSE, control = list(maxit = 1000, reltol=1E-14))
     
     (theta_hat <- optim_results$par)
@@ -121,6 +123,40 @@ training_df$perf_hat <- get_E_perf(w=w_hill, p_0 = best_row$p_0,
 
 plot(perf ~ t, data = training_df)
 points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
+
+# Simulation 3: VDR and Min MSE (same as ML) ---------------------------------------
+load_spec <- list(list(start = 3, end = 5, start_level=10, end_level=20, noise_sd = 0),
+                  list(start = 30, end = 100, start_level=50, end_level=50, noise_sd = 1))
+
+training_df <- simulate_ffm(T=200, load_spec=load_spec,
+                            p_0=496, k_g=.07, k_h=.27, tau_g=60, tau_h=13,
+			    tau_h2 = 2.5,
+                            sigma_e=10,
+			    seed=0)
+
+## Fitting with R's optim and RSS loss ------------------------------------------------
+rss <- function(theta) {
+  p_0  <- theta[1] # performance baseline
+  k_g   <- theta[2] # fitness weight
+  k_h   <- theta[3] # fatigue weight
+  tau_g <- theta[4] # fitness decay
+  tau_h <- theta[5] # fatigue decay
+  tau_h2 <- theta[6] # fatigue decay
+  sum((training_df$perf - get_E_perf(training_df$w, p_0, k_g, k_h, tau_g, tau_h,
+				     tau_h2 = tau_h2)) ^ 2)
+}
+
+optim_results <- optim(c(400, .05, .15, 30, 10, .5), rss, method = "BFGS",
+                       hessian = FALSE, control = list(maxit = 1000, reltol=1E-14))
+
+(theta_hat <- optim_results$par)
+training_df$perf_hat <- get_E_perf(w=training_df$w, p_0=theta_hat[1], k_g=theta_hat[2],
+				   k_h=theta_hat[3], tau_g = theta_hat[4], tau_h = theta_hat[5],
+				   tau_h2 = theta_hat[6])
+
+plot(perf ~ t, data = training_df)
+points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
+
 
 
 
