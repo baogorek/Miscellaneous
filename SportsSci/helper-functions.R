@@ -48,6 +48,20 @@ hill_transform <- function(w, kappa, gamma, delta) {
   kappa * w ^ gamma / (w ^ gamma +  delta ^ gamma)
 }
 
+
+get_euler_path_turner <- function(w, tau, k, power=1, initial=0) {
+  # works for either fitness or fatigue
+  T <- length(w)
+  f <- numeric(T) 
+
+  # t == 1
+  f[1] <- initial # this is time 0 in math notation
+  for (t in 2:T) {
+    f[t] <- max(0, f[t - 1] + k * w[t - 1] - (1 / tau) * f[t - 1] ^ power)
+  }
+  f
+}
+
 # Testing -----------------------------------------------------------------
 
 # test 1 - third performance periods needs two lagged training periods

@@ -64,3 +64,43 @@ if (FALSE) {
   plot(w ~ t, data=training_df)
 } 
 
+# TODO: make fitness0 the actual first fitness measurement. There's no need to decay it
+
+
+# Turner's values
+T <- 200
+tau_g <- 61
+tau_h <- 5.5
+alpha <- 1.16 # ODE nonlinearity power for fitness
+beta <- .85 # ODE nonlinearity power for fatigue
+k_g <- .10
+k_h <- .12
+p_0 <- 155
+fitness_0 <- 70.9 # initial condition for fitness
+fatigue_0 <- 24.5 # initial condition for fitness
+sigma_e <- 10
+
+simulate_turner <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
+                            alpha = 1, beta = 1,
+			    fitness_0 = 0, fatigue_0 = 0, seed = 0) {
+  set.seed(seed)
+  w <- numeric(T)
+  for (load in load_spec) {
+    length_out <- load$end - load$start + 1
+    w[load$start:load$end] <- (seq(load$start_level, load$end_level, length.out=length_out)
+  			     + rnorm(length_out, 0, load$noise_sd))
+  }
+  w <- ifelse(w < 0, 0, w)  # noise could make training impulse negative
+  
+  fitness <- get_euler_path_turner(w, tau_g, k_g, alpha, fitness_0)
+  fatigue <- get_euler_path_turner(w, tau_h, k_h, beta, fatigue_0)
+
+  E_perf <- p_0 + fitness - fatigue
+  perf <- E_perf + rnorm(T, 0, sigma_e)
+  
+  data.frame(t=1:T, w, perf)
+}
+
+
+
+

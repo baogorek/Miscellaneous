@@ -158,8 +158,6 @@ plot(perf ~ t, data = training_df)
 points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
 
 
-
-
 # Fitting with Kalman Filter ------------------------------------------------
 
 
@@ -308,4 +306,51 @@ points(ffm_fit$perf_hat, col='blue', type = 'b')
 plot(ffm_fit$mu[, 1], col='blue', type='b', ylim=c(0, 3000),
      main="Fitness (blue) and Fatigue (red)")
 points(ffm_fit$mu[, 2], col='red', type='b')
+
+# Simulation 5: Turner and Min MSE (same as ML) ---------------------------------------
+load_spec <- list(list(start = 3, end = 5, start_level=10, end_level=20, noise_sd = 0),
+                  list(start = 30, end = 100, start_level=50, end_level=100, noise_sd = 1),
+                  list(start = 120, end = 200, start_level=100, end_level=70, noise_sd = 1),
+)
+
+training_df <- simulate_turner(250, load_spec,
+			       p_0 = 155, k_g = .05, k_h = .15, tau_g = 61, tau_h = 13,
+			       sigma_e = 10,
+			       alpha = 1.16, beta = .85,
+			       fitness_0 = 70.9, fatigue_0 = 24.5)
+
+## Fitting with R's optim and RSS loss ------------------------------------------------
+rss <- function(theta) {
+  p_0  <- theta[1] # performance baseline
+  k_g   <- theta[2] # fitness weight
+  k_h   <- theta[3] # fatigue weight
+  tau_g <- theta[4] # fitness decay
+  tau_h <- theta[5] # fatigue decay
+  alpha <- theta[6] # fitness ODE power transform
+  beta <- theta[7] # fatigue ODE power transform
+  #fitness_0 <- theta[8] # fitness initial condition
+  #fatigue_0 <- theta[9] # fatigue initial condition
+  fitness_0 <- 70.9
+  fatigue_0 <- 24.5
+
+  w <- training_df$w
+
+  fitness <- get_euler_path_turner(w, tau_g, k_g, alpha, fitness_0)
+  fatigue <- get_euler_path_turner(w, tau_h, k_h, beta, fatigue_0)
+  E_perf <- p_0 + fitness - fatigue
+
+  sum((training_df$perf - E_perf) ^ 2)
+}
+
+optim_results <- optim(c(100, .05, .15, 30, 10, 1, 1), rss, method = "BFGS",
+                       hessian = FALSE, control = list(maxit = 1000, reltol=1E-14))
+
+(theta_hat <- optim_results$par)
+training_df$perf_hat <- get_E_perf(w=training_df$w, p_0=theta_hat[1], k_g=theta_hat[2],
+				   k_h=theta_hat[3], tau_g = theta_hat[4], tau_h = theta_hat[5],
+				   tau_h2 = theta_hat[6])
+
+plot(perf ~ t, data = training_df)
+points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
+
 
