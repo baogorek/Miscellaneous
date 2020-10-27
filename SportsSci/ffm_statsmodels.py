@@ -42,6 +42,10 @@ class FitnessFatigue(MLEModel):
         self['obs_cov', 0, 0] = params[5]
 
 
+# Modifying the training to have impulse first and last day
+training_df['w'].iloc[0] = 100
+training_df['w'].iloc[-1] = 100
+
 # Using the initial values
 ffm = FitnessFatigue(training_df.perf, training_df.w)
 

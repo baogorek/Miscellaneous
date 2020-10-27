@@ -1,11 +1,9 @@
 library(dplyr)
 source('helper-functions.R')
 
-simulate_ffm <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
-			 delta = NA, gamma = NA, 
-			 tau_h2 = NA,
-			 fitness_0 = 0, fatigue_0 = 0, seed = 0) {
-  set.seed(seed)
+
+create_training_impulse <- function(T, load_spec) {
+  #T <- max(unlist(as.data.frame(do.call('rbind', load_spec))$end))
   w <- numeric(T)
   for (load in load_spec) {
     length_out <- load$end - load$start + 1
@@ -13,11 +11,16 @@ simulate_ffm <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
   			     + rnorm(length_out, 0, load$noise_sd))
   }
   w <- ifelse(w < 0, 0, w)  # noise could make training impulse negative
-  
-  # initial fitness and fatigue
-  initial_fitness_effects <- fitness_0 * exp(-(1:T) / tau_g)
-  initial_fatigue_effects <- fatigue_0 * exp(-(1:T) / tau_h)
-  
+  return(w) 
+}
+
+simulate_ffm <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
+			 delta = NA, gamma = NA, 
+			 tau_h2 = NA,
+			 fitness_0 = 0, fatigue_0 = 0, seed = 0) {
+  set.seed(seed)
+ 
+  w <- create_training_impulse(T, load_spec) 
 
   # Hill function transformation of training impulse (optional) ------ 
   w_raw <- w
@@ -25,8 +28,8 @@ simulate_ffm <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
      w <- (w ^ gamma / (delta ^ gamma + w ^ gamma))
   }
 
-  fitness <- (initial_fitness_effects
-  	    + sapply(1:T, function(t) convolve_training(w[1:t], tau_g)))
+  fitness <- (fitness_0
+  	      + sapply(1:T, function(t) convolve_training(w[1:t], tau_g)))
 
   # VDR filter on fatigue (optional) -------------------------
   w_fatigue <- w
@@ -34,8 +37,8 @@ simulate_ffm <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
     w_fatigue <- sapply(1:T, function(t) ewma_training(w[1:t], tau_h2))
   }
  
-  fatigue <- (initial_fatigue_effects
-  	    + sapply(1:T, function(t) convolve_training(w_fatigue[1:t], tau_h)))
+  fatigue <- (fatigue_0
+  	      + sapply(1:T, function(t) convolve_training(w_fatigue[1:t], tau_h)))
   
   E_perf <- p_0 + k_g * fitness - k_h * fatigue
   perf <- E_perf + rnorm(T, 0, sigma_e)
@@ -64,34 +67,30 @@ if (FALSE) {
   plot(w ~ t, data=training_df)
 } 
 
-# TODO: make fitness0 the actual first fitness measurement. There's no need to decay it
 
 
-# Turner's values
-T <- 200
-tau_g <- 61
-tau_h <- 5.5
-alpha <- 1.16 # ODE nonlinearity power for fitness
-beta <- .85 # ODE nonlinearity power for fatigue
-k_g <- .10
-k_h <- .12
-p_0 <- 155
-fitness_0 <- 70.9 # initial condition for fitness
-fatigue_0 <- 24.5 # initial condition for fitness
-sigma_e <- 10
+
+
+
+## Turner's values
+#T <- 200
+#tau_g <- 61
+#tau_h <- 5.5
+#alpha <- 1.16 # ODE nonlinearity power for fitness
+#beta <- .85 # ODE nonlinearity power for fatigue
+#k_g <- .10
+#k_h <- .12
+#p_0 <- 155
+#fitness_0 <- 70.9 # initial condition for fitness
+#fatigue_0 <- 24.5 # initial condition for fitness
+#sigma_e <- 10
 
 simulate_turner <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
                             alpha = 1, beta = 1,
 			    fitness_0 = 0, fatigue_0 = 0, seed = 0) {
   set.seed(seed)
-  w <- numeric(T)
-  for (load in load_spec) {
-    length_out <- load$end - load$start + 1
-    w[load$start:load$end] <- (seq(load$start_level, load$end_level, length.out=length_out)
-  			     + rnorm(length_out, 0, load$noise_sd))
-  }
-  w <- ifelse(w < 0, 0, w)  # noise could make training impulse negative
-  
+  w <- create_training_impulse(T, load_spec) 
+ 
   fitness <- get_euler_path_turner(w, tau_g, k_g, alpha, fitness_0)
   fatigue <- get_euler_path_turner(w, tau_h, k_h, beta, fatigue_0)
 
@@ -100,7 +99,5 @@ simulate_turner <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
   
   data.frame(t=1:T, w, perf)
 }
-
-
 
 

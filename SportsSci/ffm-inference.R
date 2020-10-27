@@ -3,6 +3,8 @@ library(dplyr)
 source('helper-functions.R')
 source('sim.R')
 
+options(scipen = 999)  # No scientific notation
+
 # Simulation 1: basic FFM and Min MSE (same as ML) ---------------------------------------
 load_spec <- list(list(start = 3, end = 5, start_level=10, end_level=20, noise_sd = 0),
                   list(start = 30, end = 100, start_level=50, end_level=50, noise_sd = 1))
@@ -163,25 +165,29 @@ points(perf_hat ~ t, data = training_df, type = 'b', col = 'blue')
 
 training_df <- read.csv('training_df.csv')
 
+# Modify to fix state intercept: initial conditions:
+training_df[1, 'w'] <- 100
+training_df[nrow(training_df), 'w'] <- 100
+
+if (FALSE) {
+  # for interactive purposes
+  p_0 <- 400
+  k_g <- .05
+  k_h <- .15
+  tau_g <- 20
+  tau_h <- 5 
+  sigma_e <- sqrt(35) 
+  prior_mean_fitness <- 0
+  prior_mean_fatigue <- 0
+  prior_sd_fitness <- 1 
+  prior_sd_fatigue <- 1 
+  prior_ff_corr <- 0
+}
+
 do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
 			  prior_mean_fitness=0, prior_mean_fatigue=0,
 			  prior_sd_fitness=25, prior_sd_fatigue=25,
 			  prior_ff_corr=0) {
-
-  if (FALSE) {
-    # for interactive running
-    p_0 <- 400
-    k_g <- .05
-    k_h <- .15
-    tau_g <- 20
-    tau_h <- 5 
-    sigma_e <- sqrt(35) 
-    prior_mean_fitness <- 0
-    prior_mean_fatigue <- 0
-    prior_sd_fitness <- 1 
-    prior_sd_fatigue <- 1 
-    prior_ff_corr <- 0
-  }
 
   # Length of the time series
   T <- nrow(training_df)
@@ -218,11 +224,11 @@ do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
       # Prior (a priori) mean and variance of state
       systematic_t <- mu0
       P_t <- Sigma0
-      state_intercept[1, ] <- c(0, 0)
+      state_intercept[1, ] <-  as.numeric(B_mat * training_df$w[t])  # affects t = 2
     } else {
-      state_intercept[t, ] <- as.numeric(B_mat * training_df$w[t - 1])
-      systematic_t <- T_mat %*% mu[t - 1, ] + as.matrix(state_intercept[t, ], ncol = 1)
+      systematic_t <- T_mat %*% mu[t - 1, ] + as.matrix(state_intercept[t - 1, ], ncol = 1)
       P_t <- T_mat %*% matrix(Sigma[t - 1, ], ncol=2) %*% t(T_mat) + Q_mat
+      state_intercept[t, ] <- as.numeric(B_mat * training_df$w[t])  # affects t + 1
     }
  
     # Likelihood of performance given systematic state update
@@ -247,8 +253,7 @@ results <- do_ffm_kalman(training_df, 400, .05, .15, 20, 5, sqrt(35),
 			  prior_mean_fitness=0, prior_mean_fatigue=0,
 			  prior_sd_fitness=1, prior_sd_fatigue=1,
 			  prior_ff_corr=0)
-sum(results$log_likelihood)
-
+sum(results$log_likelihood)K
 results <- do_ffm_kalman(training_df, 495.1478, .0797, .2679, 56.3461, 13.9621, sqrt(115.1329),
 			  prior_mean_fitness=0, prior_mean_fatigue=0,
 			  prior_sd_fitness=1, prior_sd_fatigue=1,
@@ -308,16 +313,27 @@ plot(ffm_fit$mu[, 1], col='blue', type='b', ylim=c(0, 3000),
 points(ffm_fit$mu[, 2], col='red', type='b')
 
 # Simulation 5: Turner and Min MSE (same as ML) ---------------------------------------
-load_spec <- list(list(start = 3, end = 5, start_level=10, end_level=20, noise_sd = 0),
+load_spec <- list(list(start = 3, end = 15, start_level=10, end_level=20, noise_sd = 0),
                   list(start = 30, end = 100, start_level=50, end_level=100, noise_sd = 1),
-                  list(start = 120, end = 200, start_level=100, end_level=70, noise_sd = 1),
-)
+                  list(start = 120, end = 200, start_level=100, end_level=70, noise_sd = 1))
 
 training_df <- simulate_turner(250, load_spec,
 			       p_0 = 155, k_g = .05, k_h = .15, tau_g = 61, tau_h = 13,
 			       sigma_e = 10,
 			       alpha = 1.16, beta = .85,
-			       fitness_0 = 70.9, fatigue_0 = 24.5)
+			       fitness_0 = 70.9, fatigue_0 = 24.5,
+			       seed=1030943)
+
+p_0 = 155
+k_g = .05
+k_h = .15
+tau_g = 61
+tau_h = 13
+sigma_e = 10
+alpha = 1.16
+beta = .85
+fitness_0 = 70.9
+fatigue_0 = 24.5
 
 ## Fitting with R's optim and RSS loss ------------------------------------------------
 rss <- function(theta) {
@@ -326,8 +342,9 @@ rss <- function(theta) {
   k_h   <- theta[3] # fatigue weight
   tau_g <- theta[4] # fitness decay
   tau_h <- theta[5] # fatigue decay
-  alpha <- theta[6] # fitness ODE power transform
-  beta <- theta[7] # fatigue ODE power transform
+  alpha <- 1.16 # fitness ODE power transform
+  beta <- .85 # fatigue ODE power transform
+  #sigma <- exp(theta[8])  # should definitely do this everywhere!
   #fitness_0 <- theta[8] # fitness initial condition
   #fatigue_0 <- theta[9] # fatigue initial condition
   fitness_0 <- 70.9
@@ -340,9 +357,17 @@ rss <- function(theta) {
   E_perf <- p_0 + fitness - fatigue
 
   sum((training_df$perf - E_perf) ^ 2)
+  #plike <- (dnorm(training_df$perf, mean=E_perf, sd=sigma, log=TRUE)
+  #          + dgamma(alpha, 3, 2, log=TRUE)
+  #          + dgamma(beta, 3, 2, log=TRUE))
+  #sum(-plike)
 }
+# NOTE: after lots of experimenting, realizing that the stability of the
+# rss is worth iteration over the 2-d grid. Things just fall apart when
+# jumping into the likelihood
 
-optim_results <- optim(c(100, .05, .15, 30, 10, 1, 1), rss, method = "BFGS",
+theta_starting <- c(100, .08, .2, 30, 10)
+optim_results <- optim(theta_starting, rss, method = "BFGS",
                        hessian = FALSE, control = list(maxit = 1000, reltol=1E-14))
 
 (theta_hat <- optim_results$par)
