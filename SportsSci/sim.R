@@ -1,9 +1,23 @@
+library(MASS)
 library(dplyr)
 source('helper-functions.R')
 
 
-create_training_impulse <- function(T, load_spec) {
-  #T <- max(unlist(as.data.frame(do.call('rbind', load_spec))$end))
+create_pulsing_load_spec <- function(T, spacing = 20, pulse_width = 5, level = 50) {
+  load_spec <- list()
+  for (start in seq(1, T, spacing)) {
+    load_window <- list(start = start, end = start + pulse_width - 1,
+			start_level = level, end_level = level, noise_sd = 0)
+    load_spec[[length(load_spec) + 1]] <- load_window
+  } 
+  load_spec
+}
+
+create_training_impulse <- function(load_spec, T = NA) {
+  if (is.na(T)) {
+    T <- max(unlist(as.data.frame(do.call('rbind', load_spec))$end))
+  }
+
   w <- numeric(T)
   for (load in load_spec) {
     length_out <- load$end - load$start + 1
@@ -46,7 +60,82 @@ simulate_ffm <- function(T, load_spec, p_0, k_g, k_h, tau_g, tau_h, sigma_e,
   data.frame(t=1:T, w_raw, w, perf)
 }
 
-# Example -----------------------------
+
+if (FALSE) {
+  # for interactive purposes
+  p_0 <- 400
+  k_g <- .05
+  k_h <- .15
+  tau_g <- 20
+  tau_h <- 5 
+  xi <- sqrt(35) 
+  sigma_g <- 15
+  sigma_h <- 10 
+  sigma_gh <- 5 
+  prior_mean_fitness <- 75
+  prior_mean_fatigue <- 15 
+  prior_sd_fitness <- 1 
+  prior_sd_fatigue <- 1 
+  prior_ff_corr <- 0
+}
+
+simulate_kalman <- function(load_spec,
+                            # TODO: gnarly arguments. Think about a Kalman spec
+                            p_0, k_g, k_h, tau_g, tau_h,
+			    xi, sigma_g, sigma_h, sigma_gh,
+			    prior_mean_fitness, prior_mean_fatigue,
+			    prior_sd_fitness, prior_sd_fatigue,
+			    prior_ff_corr) {
+
+  # Create exogenous training loads
+  w <- create_training_impulse(load_spec)
+  T <- length(w)
+
+  # Time-stable Kalman Filter matrices -----------------------------------------
+  ## Transition matrix
+  A_mat <- matrix(c(exp(-1 / tau_g), 0, 0, exp(-1 / tau_h)), ncol=2)
+  
+  ## State intercept - each row is the fitness and fatigue effect to the next day's workout
+  B_mat <- matrix(c(exp(-1 / tau_g), exp(-1 / tau_h)), ncol=1)
+ 
+  ## Measurement matrix
+  C_mat <- matrix(c(k_g, -k_h), ncol=2)
+  
+  ## Variances
+  Q_mat <- matrix(c(sigma_g ^ 2, sigma_gh, sigma_gh, sigma_h ^ 2), ncol=2)
+  #R_mat is just xi ^ 2
+
+  ## prior distribution of fitness and fatigue
+  x0 <- c(prior_mean_fitness, prior_mean_fatigue)
+  M0 <- matrix(c(prior_sd_fitness ^ 2,
+                 rep(prior_ff_corr * prior_sd_fitness * prior_sd_fatigue, 2),
+                 prior_sd_fatigue ^ 2), ncol=2)
+  
+  # Setting up structures ----------------------------------
+  y <- numeric(T)
+  X <- matrix(rep(NA, 2 * T), ncol=2)  # State matrix containing fitness and fatigue
+
+  # State Prior to Likelihood to State Posterior - the Kalman updating equations
+  for (n in 1:T) {
+
+    # A priori mean and variance of state -- 
+    if (n == 1) { 
+      # simulate unconditional: x_0
+      X[n, ] <- mvrnorm(1, x0, M0)
+    } else {
+      # simulate conditional: x_n | x_(n - 1)
+      X[n, ] <- mvrnorm(1, A_mat %*% X[n - 1, ] + B_mat * w[n - 1], Q_mat)
+    }
+    # Simulate conditional: y_n | x_n
+    y[n] <- mvrnorm(1, p_0 + C_mat %*% X[n, ],
+		    xi ^ 2 + C_mat %*% Q_mat %*% t(C_mat))
+  }
+
+  data.frame(w=w, perf=y, true_fitness = X[, 1], true_fatigue = X[, 2])
+}
+
+
+# Examples -----------------------------
 if (FALSE) {
 
   load_spec <- list(list(start=3, end = 100, start_level=20, end_level=50, noise_sd = 1),
@@ -65,10 +154,20 @@ if (FALSE) {
 
   plot(perf ~ t, data=training_df)
   plot(w ~ t, data=training_df)
+
+
+  # Create training impulse
+  load_spec <- create_pulsing_load_spec(400, 50, 15)
+  w <- create_training_impulse(load_spec)
+  plot(w)
+
+  sim_df <- simulate_kalman(load_spec, p_0 = 500, k_g = .2, k_h = .1,
+                            tau_g = 60, tau_h = 15,
+  			    xi = 20, sigma_g = 10, sigma_h = 3, sigma_gh = 1,
+  			    prior_mean_fitness = 40, prior_mean_fatigue = 5,
+  			    prior_sd_fitness = 10, prior_sd_fatigue = 5,
+  			    prior_ff_corr=.5)
 } 
-
-
-
 
 
 

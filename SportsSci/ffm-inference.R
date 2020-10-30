@@ -176,8 +176,8 @@ if (FALSE) {
   tau_g <- 20
   tau_h <- 5 
   xi <- sqrt(35) 
-  sigma_g <- 0
-  sigma_h <- 0
+  sigma_g <- 2
+  sigma_h <- 2
   sigma_gh <- 0
   prior_mean_fitness <- 0
   prior_mean_fatigue <- 0
@@ -195,7 +195,7 @@ do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h,
   # Data set extractions
   T <- nrow(training_df)
   w <- training_df$w
-  y <- training_df$perf
+  y <- training_df$perf #TODO: response has to be called "perf" - make robust
 
   # Time-stable Kalman Filter matrices -----------------------------------------
   # Transition matrix
@@ -250,57 +250,8 @@ do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h,
   list(perf_hat=perf_hat, mu=X, Sigma=M, log_likelihood=log_likelihood)
 }
 
-# Going for generation
-  # prior distribution of fitness and fatigue
-  x0 <- c(prior_mean_fitness, prior_mean_fatigue)
-  M0 <- matrix(c(prior_sd_fitness ^ 2,
-                 rep(prior_ff_corr * prior_sd_fitness * prior_sd_fatigue, 2),
-                 prior_sd_fatigue ^ 2), ncol=2)
-  
-  # Setting up structures ----------------------------------
-  y <- numeric(T)
-  X <- matrix(rep(NA, 2 * T), ncol=2)  # State matrix containing fitness and fatigue
-  M <- matrix(rep(NA, 4 * T), ncol=4) # Rows contain vectorized Sigma_t
-
-  # State Prior to Likelihood to State Posterior - the Kalman updating equations
-  for (n in 1:T) {
-
-    # A priori mean and variance of state -- 
-    if (n == 1) { 
-      z_n <- x0
-      P_n <- M0
-    } else {
-      z_n <- A_mat %*% X[n - 1, ] + B_mat * w[n - 1]
-      P_n <- Q_mat + A_mat %*% matrix(M[n - 1, ], ncol=2) %*% t(A_mat)
-    }
-    M[n, ] <- as.numeric(P_n)
- 
-    # Likelihood of perf measurement n --
-    S_n <- xi ^ 2 + C_mat %*% P_n %*% t(C_mat)  # pre-fit residual covariance
-    y[n] <- rnorm(1, mean = p_0 + C_mat %*% z_n, sd = sqrt(S_n))
-    X[n, ] <- z_n 
-  }
- 
-sim_df <- data.frame(w=w, perf=y)  #TODO: response has to be called "perf" - make robust
-
-
-do_ffm_kalman <- function(training_df, p_0, k_g, k_h, tau_g, tau_h,
-			  xi, sigma_g = 0, sigma_h = 0, sigma_gh = 0,
-			  prior_mean_fitness=0, prior_mean_fatigue=0,
-			  prior_sd_fitness=25, prior_sd_fatigue=25,
-			  prior_ff_corr=0) {
-
-
-# For matching Python with starting values:
-results <- do_ffm_kalman(sim_df, 400, .05, .15, 20, 5, sqrt(35),
-			 sigma_g = 0, sigma_h = 0, sigma_gh = 0,
-			 prior_mean_fitness=0, prior_mean_fatigue=0,
-			 prior_sd_fitness=1, prior_sd_fatigue=1,
-			 prior_ff_corr=0)
-
-# Now for fitting
 fit_ffm_via_kalman <- function(df, starting_theta,
-			       sigma_g = 0, sigma_h = 0, sigma_gh = 0,
+			       #sigma_g = 0, sigma_h = 0, sigma_gh = 0,
 			       prior_mean_fitness = 0, prior_mean_fatigue = 0,
 			       prior_sd_fitness = 1, prior_sd_fatigue = 1,
 			       prior_ff_corr = 0) {
@@ -311,7 +262,10 @@ fit_ffm_via_kalman <- function(df, starting_theta,
     k_h <- theta[3] # fatigue weight
     tau_g <- theta[4] # fitness decay
     tau_h <- theta[5] # fatigue decay
-    xi <- theta[6] # standard deviation of error
+    sigma_h <- theta[6] # Q[1, 1]
+    sigma_g <- theta[7] # Q[2, 2]
+    sigma_gh <- theta[8] # Q[1, 2] = Q[2, 1]
+    xi <- theta[9] # standard deviation of measurement error
   
     filtered <- do_ffm_kalman(df, p_0, k_g, k_h, tau_g, tau_h, xi,
 			      sigma_g, sigma_h, sigma_gh,
@@ -325,12 +279,29 @@ fit_ffm_via_kalman <- function(df, starting_theta,
 	control = list(maxit = 10000, reltol=1E-14))
 }
 
-# Fitting the FFM using the functions above ----------------------
-starting_theta <- c(400, .08, .25, 50, 15, sqrt(35))
+# Operations with Kalman Filter 
+## For matching Python with starting values:
+results <- do_ffm_kalman(training_df, 400, .05, .15, 20, 5, sqrt(35),
+			 sigma_g = 0, sigma_h = 0, sigma_gh = 0,
+			 prior_mean_fitness=0, prior_mean_fatigue=0,
+			 prior_sd_fitness=1, prior_sd_fatigue=1,
+			 prior_ff_corr=0)
+
+## Recovering parameters using simulation
+load_spec <- create_pulsing_load_spec(500, 50, 15)
+
+sim_df <- simulate_kalman(load_spec, p_0 = 500, k_g = .1, k_h = .3,
+                          tau_g = 60, tau_h = 15,
+			  xi = 20, sigma_g = 10, sigma_h = 3, sigma_gh = 1,
+			  prior_mean_fitness = 40, prior_mean_fatigue = 10,
+			  prior_sd_fitness = 20, prior_sd_fatigue = 5,
+			  prior_ff_corr=.5)
+
+starting_theta <- c(480, .08, .15, 55, 10, 7, 3, 4, 7)
 ffm_optim <- fit_ffm_via_kalman(sim_df, starting_theta,
-		                prior_mean_fitness=0, prior_mean_fatigue=0,
-		                prior_sd_fitness=1, prior_sd_fatigue=1,
-		                prior_ff_corr=0)
+		                prior_mean_fitness=75, prior_mean_fatigue=15,
+		                prior_sd_fitness=10, prior_sd_fatigue=3,
+		                prior_ff_corr=1)
 ffm_optim
 (theta_hat <- ffm_optim$par)
 
