@@ -1,9 +1,11 @@
 library(MASS)
 library(dplyr)
+
 source('helper-functions.R')
 
 
-create_pulsing_load_spec <- function(T, spacing = 20, pulse_width = 5, level = 50) {
+create_pulsing_load_spec <- function(T, spacing = 20, pulse_width = 10,
+				     level = 50) {
   load_spec <- list()
   for (start in seq(1, T, spacing)) {
     load_window <- list(start = start, end = start + pulse_width - 1,
@@ -79,59 +81,30 @@ if (FALSE) {
   prior_ff_corr <- 0
 }
 
-simulate_kalman <- function(load_spec,
-                            # TODO: gnarly arguments. Think about a Kalman spec
-                            p_0, k_g, k_h, tau_g, tau_h,
-			    xi, sigma_g, sigma_h, sigma_gh,
-			    prior_mean_fitness, prior_mean_fatigue,
-			    prior_sd_fitness, prior_sd_fatigue,
-			    prior_ff_corr) {
-
+simulate_kalman <- function(load_spec, kalman_model) {
   # Create exogenous training loads
   w <- create_training_impulse(load_spec)
   T <- length(w)
-
-  # Time-stable Kalman Filter matrices -----------------------------------------
-  ## Transition matrix
-  A_mat <- matrix(c(exp(-1 / tau_g), 0, 0, exp(-1 / tau_h)), ncol=2)
-  
-  ## State intercept - each row is the fitness and fatigue effect to the next day's workout
-  B_mat <- matrix(c(exp(-1 / tau_g), exp(-1 / tau_h)), ncol=1)
  
-  ## Measurement matrix
-  C_mat <- matrix(c(k_g, -k_h), ncol=2)
-  
-  ## Variances
-  Q_mat <- matrix(c(sigma_g ^ 2, sigma_gh, sigma_gh, sigma_h ^ 2), ncol=2)
-  #R_mat is just xi ^ 2
-
-  ## prior distribution of fitness and fatigue
-  x0 <- c(prior_mean_fitness, prior_mean_fatigue)
-  M0 <- matrix(c(prior_sd_fitness ^ 2,
-                 rep(prior_ff_corr * prior_sd_fitness * prior_sd_fatigue, 2),
-                 prior_sd_fatigue ^ 2), ncol=2)
-  
   # Setting up structures ----------------------------------
   y <- numeric(T)
-  X <- matrix(rep(NA, 2 * T), ncol=2)  # State matrix containing fitness and fatigue
+  X <- matrix(rep(NA, 2 * T), ncol=2)  # State matrix w/ fitness and fatigue
 
-  # State Prior to Likelihood to State Posterior - the Kalman updating equations
-  for (n in 1:T) {
-
-    # A priori mean and variance of state -- 
-    if (n == 1) { 
-      # simulate unconditional: x_0
-      X[n, ] <- mvrnorm(1, x0, M0)
-    } else {
-      # simulate conditional: x_n | x_(n - 1)
-      X[n, ] <- mvrnorm(1, A_mat %*% X[n - 1, ] + B_mat * w[n - 1], Q_mat)
+  with(kalman_model, {
+    for (n in 1:T) {
+      # A priori mean and variance of state -- 
+      if (n == 1) { 
+        # simulate unconditional: x_0
+        X[n, ] <- mvrnorm(1, x_0, M_0)
+      } else {
+        # simulate conditional: x_n | x_(n - 1)
+        X[n, ] <- mvrnorm(1, A %*% X[n - 1, ] + B * w[n - 1], Q)
+      }
+      # Simulate conditional: y_n | x_n
+      y[n] <- mvrnorm(1, p_0 + C %*% X[n, ], xi ^ 2 + C %*% Q %*% t(C))
     }
-    # Simulate conditional: y_n | x_n
-    y[n] <- mvrnorm(1, p_0 + C_mat %*% X[n, ],
-		    xi ^ 2 + C_mat %*% Q_mat %*% t(C_mat))
-  }
-
-  data.frame(w=w, perf=y, true_fitness = X[, 1], true_fatigue = X[, 2])
+    data.frame(t = 1:T, w, y, true_fitness = X[, 1], true_fatigue = X[, 2])
+  })
 }
 
 
