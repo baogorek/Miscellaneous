@@ -215,62 +215,201 @@ extract_and_transform_params <- function(kalman_model) {
     tau_h <- -1 / log(A[2, 2])
     sigma_g <- sqrt(Q[1, 1])
     sigma_h <- sqrt(Q[2, 2])
-    rho_gh <- Q[1, 2] / sqrt(Q[1, 1] * Q[2, 2])
+    rho_gh <- Q[1, 2] / (sigma_g * sigma_h)
 
-  c(log(p_0), # 1
-    log(k_g), # 2
-    log(k_h), # 3
-    log(tau_g), # 4
-    log(tau_h), # 5
-    log(sigma_g), # 6
-    log(sigma_h), # 7
-    fisher_transform(rho_gh), # 8
-    log(xi) # 9
-  ) 
+  #c(log(p_0), # 1
+  #  log(k_g), # 2
+  #  log(k_h), # 3
+  #  log(tau_g), # 4
+  #  log(tau_h), # 5
+  #  log(sigma_g), # 6
+  #  log(sigma_h), # 7
+  #  #qlogis(rho_gh / 2 + .5), # 8
+  #  log(xi) # 9
+  #) 
+  c(p_0,
+    k_g,
+    k_h,
+    tau_g,
+    tau_h,
+    xi,
+    sigma_g,
+    sigma_h,
+    rho_gh)
   })
 }
 
 update <- function(kalman_model, theta) {
     mod <- kalman_model
-    mod$p_0 <- exp(theta[1])
-    mod$C[1, 1] <- exp(theta[2])
-    mod$C[1, 2] <- -1 * exp(theta[3]) 
-    mod$A[1, 1] <- exp(-1 / exp(theta[4]))
-    mod$A[2, 2] <- exp(-1 / exp(theta[5]))
-    mod$B[1, 1] <- mod$A[1, 1]
-    mod$B[2, 1] <- mod$A[2, 2]
-    mod$Q[1, 1] <- exp(theta[6]) ^ 2
-    mod$Q[2, 2] <- exp(theta[7]) ^ 2
-    mod$Q[1, 2] <- sqrt(mod$Q[1, 1] * mod$Q[2, 2]) * inv_fisher_transform(theta[8])
-    mod$Q[2, 1] <- mod$Q[1, 2]
-    mod$xi <- exp(theta[9])
+
+    #mod$p_0 <- exp(theta[1])
+    #mod$C[1, 1] <- exp(theta[2])
+    #mod$C[1, 2] <- -1 * exp(theta[3]) 
+    #mod$A[1, 1] <- exp(-1 / exp(theta[4]))
+    #mod$A[2, 2] <- exp(-1 / exp(theta[5]))
+    #mod$B[1, 1] <- mod$A[1, 1]
+    #mod$B[2, 1] <- mod$A[2, 2]
+    #mod$Q[1, 1] <- exp(theta[6]) ^ 2
+    #mod$Q[2, 2] <- exp(theta[7]) ^ 2
+    #rho <- 2 * plogis(theta[8]) - 1
+    #mod$Q[1, 2] <- sqrt(mod$Q[1, 1] * mod$Q[2, 2]) * rho
+    #mod$Q[2, 1] <- mod$Q[1, 2]
+    #mod$xi <- exp(theta[9])
+
+    mod$p_0 <- theta[1]
+    mod$C[1, 1] <- theta[2]
+    mod$C[1, 2] <- -1 * theta[3] 
+    mod$A[1, 1] <- exp(-1 / theta[4])
+    mod$A[2, 2] <- exp(-1 / theta[5])
+    mod$B[1, 1] <- exp(-1 / theta[4])
+    mod$B[2, 1] <- exp(-1 / theta[5])
+    mod$xi <- theta[6]
+    mod$Q[1, 1] <- theta[7] ^ 2
+    mod$Q[2, 2] <- theta[8] ^ 2
+    mod$Q[1, 2] <- theta[7] * theta[8] * theta[9]
+    mod$Q[2, 1] <- theta[7] * theta[8] * theta[9]
+
   mod
 }
 
-
 # Operations with Kalman Filter 
-## For matching Python with starting values:
-results <- do_ffm_kalman(training_df, 400, .05, .15, 20, 5, sqrt(35),
-			 sigma_g = 0, sigma_h = 0, sigma_gh = 0,
-			 prior_mean_fitness=0, prior_mean_fatigue=0,
-			 prior_sd_fitness=1, prior_sd_fatigue=1,
-			 prior_ff_corr=0)
 
 ## Recovering parameters using simulation
 kalman_model <- create_kalman_model(p_0 = 500, k_g = .1, k_h = .3,
                                     tau_g = 60, tau_h = 15,
-			            xi = 20,
-				    sigma_g = 10, sigma_h = 3, rho_gh = .35,
+			            xi = 10,
+				    sigma_g = 20, sigma_h = 15, rho_gh = .5,
 			            initial_g = 40, initial_h = 20,
-			            initial_sd_g = 10, initial_sd_h = 5,
-			            initial_rho_gh =.55)
+			            initial_sd_g = 20, initial_sd_h = 20,
+			            initial_rho_gh =0)
 
 print(kalman_model)
 
-load_spec <- create_pulsing_load_spec(2500, 50, 15)
-sim_df <- simulate_kalman(load_spec, kalman_model)
+
+# Bring in the Python simulation
+sim_df <- read.csv("python_sim.csv")
+
+load_spec <- create_pulsing_load_spec(10300, 70, 40)
+sim_df2 <- simulate_kalman(load_spec, kalman_model)
+sim_df2$w
 
 theta <- extract_and_transform_params(kalman_model)
+
+theta[1] <- 500
+theta[7] <- 10 # sigma_g
+theta[8] <- 5 # sigma_h
+theta[9] <- 0 
+
+df <- sim_df
+
+mod <- update(kalman_model, theta)
+filtered <- filter(df, mod)
+-1.0 * sum(filtered$loglike)
+
+
+theta1 <- theta[1:6]
+theta2 <- theta[7:8]
+theta3 <- theta[9]
+
+cost_fn1 <- function(theta1) {
+    theta <- c(theta1, theta2, theta3)
+    mod <- update(kalman_model, theta)
+    filtered <- filter(df, mod)
+    -1.0 * sum(filtered$loglike)
+}
+
+cost_fn2 <- function(theta2) {
+    theta <- c(theta1, theta2, theta3)
+    mod <- update(kalman_model, theta)
+    filtered <- filter(df, mod)
+    -1.0 * sum(filtered$loglike)
+}
+
+cost_fn3 <- function(theta3) {
+    theta <- c(theta1, theta2, theta3)
+    mod <- update(kalman_model, theta)
+    filtered <- filter(df, mod)
+    -1.0 * sum(filtered$loglike)
+}
+
+
+
+res <- optim(theta1, cost_fn1, method = "BFGS",
+             control = list(maxit = 10000, reltol=1E-14,
+			    parscale = c(500, .1, .1, 10, 10, 1)))
+theta1 <- res$par
+
+res <- optim(theta2, cost_fn2, method = "BFGS",
+             control = list(maxit = 10000, reltol=1E-14))
+theta2 <- res$par
+
+res <- optim(theta3, cost_fn3, method = "L-BFGS-B",
+	     lower=-1,
+	     upper=1,
+             control = list(maxit = 10000, factr=1E-14))
+theta3 <- res$par
+
+
+
+
+# 3D graphics
+library(lattice)
+
+# k_g and k_h
+fn <- function(x, y) {
+  theta <- c(500, x, y, 60, 15, 20, 15, .5, 10)
+  mod <- update(kalman_model, theta) 
+  filtered <- filter(sim_df, mod)
+  sum(filtered$loglike)
+}
+
+grid <- expand.grid(k_g = seq(.03, .35, .02), 
+		    k_h = seq(.15, .45, .02))
+grid$loglike <- NA
+
+for (i in 1:nrow(grid)) {
+  print(i)
+  grid[i, "loglike"] <-  fn(grid[i, "k_g"], grid[i, "k_h"])
+}
+
+wireframe(loglike ~ k_g * k_h, grid, shade = TRUE, aspect = c(1, 1),
+	      light.source = c(10,50,50), main = "Study 1",
+	          scales = list(z.ticks=5,arrows=FALSE, col="black", font=10, tck=0.5),
+	          screen = list(z = 30, x = -75, y = 0))
+
+
+# sigma_g and sigma_h
+fn <- function(x, y) {
+  theta <- c(500, .1, .3, 60, 15, x, y, .5, 10)
+  mod <- update(kalman_model, theta) 
+  filtered <- filter(sim_df, mod)
+  sum(filtered$loglike)
+}
+
+grid <- expand.grid(sigma_g = seq(5, 35, 2), 
+		    sigma_h = seq(10, 20, 1))
+grid$loglike <- NA
+
+for (i in 1:nrow(grid)) {
+  print(i)
+  grid[i, "loglike"] <-  fn(grid[i, "sigma_g"], grid[i, "sigma_h"])
+}
+
+wireframe(loglike ~ sigma_g * sigma_h, grid, shade = TRUE, aspect = c(1, 1),
+	      light.source = c(10,50,50), main = "Study 1",
+	          scales = list(z.ticks=5,arrows=FALSE, col="black", font=10, tck=0.5),
+	          screen = list(z = 130, x = -75, y = 0))
+
+
+
+
+
+
+
+
+
+theta <- extract_and_transform_params(kalman_model)
+theta[8] <- .6
 
 optim_fn <- function(theta) {
   mod <- update(kalman_model, theta)
@@ -281,10 +420,23 @@ optim_fn <- function(theta) {
 starting <- theta + .1 * rnorm(length(theta))
 res <- optim(starting, optim_fn, method = "BFGS",
              control = list(maxit = 10000, reltol=1E-14))
-
+# TODO: fix state space error subscript
 update(kalman_model, theta)
 update(kalman_model, starting)
 update(kalman_model, res$par)
+
+
+N <- nrow(sim_df)
+sim_df$fit_lag1 <- c(NA, sim_df$true_fitness[1:(N-1)])
+sim_df$fat_lag1 <- c(NA, sim_df$true_fatigue[1:(N-1)])
+sim_df$w_lag1 <- c(NA, sim_df$w[1:(N-1)])
+
+sim_df$v1_hat <- sim_df$true_fitness - exp(-1/60) * sim_df$fit_lag1 - exp(-1/60) * sim_df$w_lag1
+sim_df$v2_hat <- sim_df$true_fatigue - exp(-1/15) * sim_df$fat_lag1 - exp(-1/15) * sim_df$w_lag1
+
+sd(sim_df$v1_hat[2:N])
+sd(sim_df$v2_hat[2:N])
+cor(sim_df$v1_hat[2:N], sim_df$v2_hat[2:N])
 
 
 # Predicted ("filtered") performance values for every time step

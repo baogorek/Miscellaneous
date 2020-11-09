@@ -101,7 +101,7 @@ simulate_kalman <- function(load_spec, kalman_model) {
         X[n, ] <- mvrnorm(1, A %*% X[n - 1, ] + B * w[n - 1], Q)
       }
       # Simulate conditional: y_n | x_n
-      y[n] <- mvrnorm(1, p_0 + C %*% X[n, ], xi ^ 2 + C %*% Q %*% t(C))
+      y[n] <- rnorm(1, p_0 + C %*% X[n, ], xi) #sqrt(xi ^ 2 + C %*% Q %*% t(C)))
     }
     data.frame(t = 1:T, w, y, true_fitness = X[, 1], true_fatigue = X[, 2])
   })

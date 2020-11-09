@@ -27,7 +27,7 @@ create_kalman_model <- function(p_0 = 400, k_g = .1, k_h = .3, tau_g = 50, tau_h
   C <- matrix(c(k_g, -k_h), ncol=2)
 
   # Variances
-  Q <- matrix(c(sigma_g ^ 2, rep(rho_gh * sigma_g * sigma_h, sigma_h ^ 2, 2),
+  Q <- matrix(c(sigma_g ^ 2, rep(rho_gh * sigma_g * sigma_h, 2),
                 sigma_h ^ 2), ncol=2)
   xi <- xi  # aka "R" matrix
 
