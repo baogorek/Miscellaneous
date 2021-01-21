@@ -1,36 +1,31 @@
-library(dplyr)
 library(urca)
 library(vars)
 
 # Going after estimation of the model:
 # (del y_t, del x_t)T = Alpha %*% BetaT %*% (y_t-1, x_t-1)T
 #    + Gamma %*% (del y_t-1, del x_t-1)T + epsilon_t
-
-
+set.seed(1342)
 T <- 500
-burned_in <- 50:T
-
-X <- matrix(NA, nrow=T, ncol=2)
-
-X[1:2, ] <- 0
-
-beta <- 2 
+burned_in <- 100:T
 
 # Note: change say the .6 to 0 in alpha and the system explodes
 # Claim: There's no way to get unidirectional causality in a cointegrated system
 # Even though: the shocks only go from x to y
-Alpha <- matrix(c(-.3, -.4, .6, .5), ncol=2, byrow=T)  # Found an example VAR(1)
+
+beta <- 2  # y_t - beta * x_t is stationary
+Alpha <- matrix(c(-.3, -.4, .6, .5), ncol=2, byrow=T)  # Pulled from an example VAR(1)
 Beta_T <- matrix(c(1, -beta, -1 / beta, 1), ncol=2, byrow=T)
 Gamma <- matrix(c(.5, .4, 0, .8), ncol=2, byrow=T)
 
-
+# Generate data
+X <- matrix(NA, nrow=T, ncol=2)
+X[1:2, ] <- 0
 for (t in 3:T) {
   epsilon_t <- rnorm(2, mean=0, sd=1)
   x_lag1 <- X[t - 1, ]
   del_x_lag1 <- X[t - 1, ] - X[t - 2, ]
   cat('---', t, '---\n')
   cat('x(t-1) =', x_lag1, ', dx(t-1)=', del_x_lag1, '\n-----\n')
-
 
   del_x <- Alpha %*% Beta_T %*% x_lag1 + Gamma %*% del_x_lag1 + epsilon_t
   X[t, ] <- x_lag1 + del_x
