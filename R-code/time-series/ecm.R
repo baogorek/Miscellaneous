@@ -81,8 +81,9 @@ Alpha
 Gamma
 jotest@GAMMA  # This is very close
 
-var <- vec2var(jotest)
 
+# Using a VAR representation of a VEC
+var <- vec2var(jotest)
 # Almost identical! (Maybe it's the constant in jotest)
 -var$A$A2
 jotest@GAMMA[, 2:3]
@@ -90,10 +91,50 @@ jotest@GAMMA[, 2:3]
 -(diag(2) - var$A$A1 - var$A$A2)
 jotest@PI
 
-ir_x_to_y <- irf(var, impulse="x", response="y")
+
+# Studying impulse response
+
+# Here's what comes out of the vars package:
+ir_x_to_y <- irf(var, impulse="x", response="y", n.ahead = 30)
 plot(ir_x_to_y)
-ir_y_to_x <- irf(var, impulse="y", response="x")
+ir_y_to_x <- irf(var, impulse="y", response="x", n.ahead = 30)
 plot(ir_y_to_x)
+
+
+
+# I'm going to shock the system at period 3
+
+T <- 50
+x0 <- 100
+shock <- 1
+# Shock x and run Generate Data block
+x_t1 <- c(5 + beta * x0, x0)  # start at equilibrium
+x_t2 <- c(5 + beta * x0, x0 + shock)  # shock in x only
+
+# or Shock y and run Generate Data block
+#x_t1 <- c(beta * x0, x0)  # start at equilibrium
+#x_t2 <- c(beta * x0 + shock, x0)  # shock in x only
+
+# Generate data
+X <- matrix(NA, nrow=T, ncol=2)
+X[1, ] <- x_t1
+X[2, ] <- x_t2 
+for (t in 3:T) {
+  x_lag1 <- X[t - 1, ]
+  del_x_lag1 <- X[t - 1, ] - X[t - 2, ]
+  cat('---', t, '---\n')
+  cat('x(t-1) =', x_lag1, ', dx(t-1)=', del_x_lag1, '\n-----\n')
+
+  del_x <- Alpha %*% Beta_T %*% x_lag1 + Gamma %*% del_x_lag1
+  X[t, ] <- x_lag1 + del_x
+}
+
+df <- as.data.frame(X)
+names(df) <- c('y', 'x')
+plot(df$y)
+plot(df$x)
+
+
 
 
 z = df$y - 1.3 * df$x
