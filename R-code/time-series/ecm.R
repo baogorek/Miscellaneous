@@ -5,21 +5,25 @@ library(vars)
 # (del y_t, del x_t)T = Alpha %*% BetaT %*% (y_t-1, x_t-1)T
 #    + Gamma %*% (del y_t-1, del x_t-1)T + epsilon_t
 set.seed(1342)
-T <- 500
-burned_in <- 100:T
 
+T <- 5000
+x_t1 <- c(100, 80)
+x_t2 <- c(110, 85)
+
+burned_in <- (.05 * T):T
 # Note: change say the .6 to 0 in alpha and the system explodes
 # Claim: There's no way to get unidirectional causality in a cointegrated system
 # Even though: the shocks only go from x to y
 
-beta <- 2  # y_t - beta * x_t is stationary
-Alpha <- matrix(c(-.3, -.4, .6, .5), ncol=2, byrow=T)  # Pulled from an example VAR(1)
-Beta_T <- matrix(c(1, -beta, -1 / beta, 1), ncol=2, byrow=T)
+beta <- 1.3  # y_t - beta * x_t is stationary
+Alpha <- matrix(c(.3, .4), ncol=1)
+Beta_T <- matrix(c(1, -beta), ncol=2)
 Gamma <- matrix(c(.5, .4, 0, .8), ncol=2, byrow=T)
 
 # Generate data
 X <- matrix(NA, nrow=T, ncol=2)
-X[1:2, ] <- 0
+X[1, ] <- x_t1
+X[2, ] <- x_t2 
 for (t in 3:T) {
   epsilon_t <- rnorm(2, mean=0, sd=1)
   x_lag1 <- X[t - 1, ]
@@ -33,8 +37,10 @@ for (t in 3:T) {
 
 df <- as.data.frame(X[burned_in, ])
 names(df) <- c('y', 'x')
+low <- min(c(df$y, df$x))
+high <- max(c(df$y, df$x))
 
-plot(df$y, type='l')
+plot(df$y, type = 'l', ylim = c(low, high))
 lines(df$x, col = 'blue')
 
 summary(lm(y ~ x, data = df))
@@ -46,14 +52,33 @@ jotest <- ca.jo(df,
                 spec="transitory")
 
 summary(jotest)
-jotest@V  # Alpha
-jotest@W # t(Beta)
 
-# These are the same
-jotest@PI  # matrix mutliplying levels
-jotest@V %*% t(jotest@W)
-Alpha %*% Beta_T  # Not the same! TODO: figure out why
+# Lag matrix multiplier recovery - Pretty Good!
+jotest@PI
+jotest@W %*% t(jotest@V)  # Alpha %*% Beta^T
+Alpha %*% Beta_T
 
+# Can I recover Alpha and Beta?
+# Remember, ca.jo returns matrices but in texts like
+# https://faculty.washington.edu/ezivot/econ584/notes/cointegration.pdf
+# Alpha is n x r and Beta_T is r x n
+
+# Matching Beta
+jotest@V[, 1]  # Beta
+Beta_T
+
+# Matching Alpha
+jotest@W[, 1]  # Alpha
+t(Alpha)
+
+t(jotest@V)
+Beta_T
+# The first column is spot on, but the second appears to have been normalized
+jotest@W
+Alpha
+
+# Matching the matrix multiplying the lag deltas
+Gamma
 jotest@GAMMA  # This is very close
 
 var <- vec2var(jotest)
@@ -70,6 +95,11 @@ plot(ir_x_to_y)
 ir_y_to_x <- irf(var, impulse="y", response="x")
 plot(ir_y_to_x)
 
+
+z = df$y - 1.3 * df$x
+z2 = df$y - .4047 * df$x
+plot(z, main = "y - 1.3 * x")
+plot(z2, main = "y - 405 * x")
 
 library(forecast)
 auto.arima(df$x)
