@@ -83,66 +83,130 @@ jotest@GAMMA  # This is very close
 
 
 # Using a VAR representation of a VEC
+# x_t = A1 * x_{t - 1} + A2 * x_{t - 2} 
 var <- vec2var(jotest)
 # Almost identical! (Maybe it's the constant in jotest)
+
+# Gamma *is* -A2
 -var$A$A2
 jotest@GAMMA[, 2:3]
+Gamma
 
+# The relationship of A1 and A2 of the var and PI of the VECM
 -(diag(2) - var$A$A1 - var$A$A2)
 jotest@PI
 
+# Recovering A1
+diag(2) + Gamma + Alpha %*% Beta_T
+var$A$A1
 
 # Studying impulse response
 
 # Here's what comes out of the vars package:
-ir_x_to_y <- irf(var, impulse="x", response="y", n.ahead = 30)
+ir_x_to_y <- irf(var, impulse="x", response="y", n.ahead = 40)
 plot(ir_x_to_y)
-ir_y_to_x <- irf(var, impulse="y", response="x", n.ahead = 30)
+
+ir_x_to_x <- irf(var, impulse="x", response="x", n.ahead = 40)
+plot(ir_x_to_x)
+
+ir_y_to_x <- irf(var, impulse="y", response="x", n.ahead = 40)
 plot(ir_y_to_x)
-
-
 
 # I'm going to shock the system at period 3
 
 T <- 50
 x0 <- 100
 shock <- 1
+offset <- 0
 # Shock x and run Generate Data block
-x_t1 <- c(5 + beta * x0, x0)  # start at equilibrium
-x_t2 <- c(5 + beta * x0, x0 + shock)  # shock in x only
+x_t1 <- c(offset + beta * x0, x0)  # start at equilibrium
+x_t2 <- c(offset + beta * x0, x0 + shock)  # shock in x only
 
 # or Shock y and run Generate Data block
-#x_t1 <- c(beta * x0, x0)  # start at equilibrium
-#x_t2 <- c(beta * x0 + shock, x0)  # shock in x only
+#x_t1 <- c(offset + beta * x0, x0)  # start at equilibrium
+#x_t2 <- c(offset + beta * x0 + shock, x0)  # shock in x only
 
 # Generate data
 X <- matrix(NA, nrow=T, ncol=2)
 X[1, ] <- x_t1
 X[2, ] <- x_t2 
+X[1, ] <- c(0, 0)
+X[2, ] <- c(0, 1)
 for (t in 3:T) {
   x_lag1 <- X[t - 1, ]
   del_x_lag1 <- X[t - 1, ] - X[t - 2, ]
-  cat('---', t, '---\n')
-  cat('x(t-1) =', x_lag1, ', dx(t-1)=', del_x_lag1, '\n-----\n')
-
   del_x <- Alpha %*% Beta_T %*% x_lag1 + Gamma %*% del_x_lag1
   X[t, ] <- x_lag1 + del_x
 }
 
 df <- as.data.frame(X)
 names(df) <- c('y', 'x')
-plot(df$y)
-plot(df$x)
+par(mfrow=c(2, 1))
+plot(df$y, main="Effect on y_t of x's impulse at t=2")
+plot(df$x, main="Effect on x_t of x's impulse at t=2")
+
+library(Matrix)
+A2 <- -Gamma
+A1 <- diag(2) + Gamma + Alpha %*% Beta_T
+
+# Check
+var$A$A1
+A1
+
+var$A$A2
+A2
+
+# Transition matrix (State Space Representation of Var2 Representation of VECM!)
+F <- matrix(rep(0, 16), nrow=4, ncol=4)
+F[1:2, 1:2] <- A1
+F[1:2, 3:4] <- A2
+F[3:4, 1:2] <- diag(2)
+
+u <- matrix(c(0, 1, 0, 0), ncol=1)  # unit shock in x_t
+
+# Spectral Decomposition of F
+r <- eigen(F)
+P <- r$vectors
+D <- diag(r$values)
+P_inv <- solve(P)
+
+# Check decomposition: Imaginary components are approx 0
+round(Re(P %*% D %*% P_inv), 4)
+F
+
+# Send out to h power
+irf_y_to_x_shock <- c()
+irf_x_to_x_shock <- c()
+for (h in 1:30) {
+    F_h <- round(Re(P %*% D ^ h %*% P_inv), 4)
+    F_h
+    response <- F_h %*% u
+    irf_y_to_x_shock <- c(irf_y_to_x_shock, response[1])
+    irf_x_to_x_shock <- c(irf_x_to_x_shock, response[2])
+}
+
+par(mfrow=c(2, 1))
+plot(irf_y_to_x_shock, main="Effect on y_t of x's impulse at t=2")
+plot(irf_x_to_x_shock, main="Effect on x_t of x's impulse at t=2")
 
 
+# We'll do the same thing without the spectral decomposition, just powers
+mat_power <- function(M, pow) {
+  Result <- M
+  while (pow > 1) {
+    Result <- Result %*% M 
+    pow <- pow - 1
+  }
+  Result 
+}
+  
 
-
-z = df$y - 1.3 * df$x
-z2 = df$y - .4047 * df$x
-plot(z, main = "y - 1.3 * x")
-plot(z2, main = "y - 405 * x")
-
-library(forecast)
-auto.arima(df$x)
-auto.arima(df$y)
-
+irf_y <- c()
+irf_x <- c()
+for (j in 2:30) {
+    F_j <- mat_power(F, j) %*% u
+    irf_y <- c(irf_y, F_j[1])
+    irf_x <- c(irf_x, F_j[2])
+}
+plot(irf_x)
+plot(irf_y)
