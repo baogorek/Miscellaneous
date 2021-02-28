@@ -1,16 +1,3 @@
-# Start with a Monte Carlo simulation
-
-T <- 10
-
-dt <- .01
-mu <- .1
-sigma <- .25 
-
-S0 <- 50  # Initial Stock Price
-strike <- 55  # Option strike price
-premium <- 0  # Option premium paid
-## Simulating a stock price as geometric brownian motion
-
 
 simulate_stock_price <- function(S0, mu, sigma, dt, T) {
   # Simulates a stock price using approximate geometric Brownian motion
