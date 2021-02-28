@@ -1,5 +1,6 @@
 library(igraph)  
 library(Cairo) 
+library(tcltk)
 
 nodes <- read.csv("myNodes.csv", header = T, stringsAsFactors = FALSE)  
 edges <-read.csv("myEdges.csv", header = T, stringsAsFactors = FALSE)
