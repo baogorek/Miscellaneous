@@ -36,8 +36,10 @@ def months_in_scope(interview_mo, quarter):
 
 # The x means that this file appeared in last year's also, and updates were made
 # On the same information
-fmli_q1 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw19/intrvw19/fmli191x.csv",
+fmli_q1 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw18/fmli191.csv",
                     2019, 1)
+#fmli_q1 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw19/intrvw19/fmli191x.csv",
+#                    2019, 1)
 fmli_q2 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw19/intrvw19/fmli192.csv",
                     2019, 2)
 fmli_q3 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw19/intrvw19/fmli193.csv",
@@ -133,20 +135,29 @@ plt.hist(fmli_2019[['FINLWT21']])
 # 3. Calibration factor - Sounds like a raking adj to 24 known pop counts
 
 
-# Let's estimate Annual income
-# FINATXEM - Total amount of family income after estimated taxes
-# in the last 12 months (Imputed or collected data)
-fmli_2019[['FINATXEM']] 
+# Matching a BLS.gov report
+#https://www.bls.gov/opub/reports/consumer-expenditures/2019/pdf/home.pdf
 
 replicate_quarters = 4  # Each quarter is weighted for annual results
 proportion_in_scope = fmli_2019['months_in_scope'] / 3 # Peanut butter spread
 
-denom = np.sum(fmli_2019['weight'] / replicate_quarters * proportion_in_scope)
-numer = np.sum(fmli_2019['weight'] / replicate_quarters * proportion_in_scope * fmli_2019['FINATXEM'])
+w = fmli_2019['weight'] / replicate_quarters * proportion_in_scope
+np.round(np.sum(w) / 1000) # compare to 132,242
+# Let's estimate Annual income
+# FINATXEM - Total amount of family income after estimated taxes
+# FINCBTAX - Total amount of family income before taxes in the last 12 months (Collected data)
+# FINCBTXM - Total amount of family income before taxes (Imputed or collected data)
+# AGE_REF - Age of reference person
+# in the last 12 months (Imputed or collected data)
+var = fmli_2019['FINCBTXM']
 
-income_est = numer / denom
-print(f'Est Total Family Income After Taxes 2019 is {income_est:.2f}')
+def estimate(var):
+    denom = np.sum(w)
+    numer = np.sum(w * var)
+    return numer / denom
 
+estimate(fmli_2019["AGE_REF"])  # Compare to 51.544
+estimate(fmli_2019["FINCBTXM"])  # Compare to 51.544
 # From Section 6.1 of the Getting Started Guide (https://www.bls.gov/cex/pumd-getting-started-guide.htm)
 # Why do users need data from two years to estimate one calendar year?
 # Users report expenditures for the three months prior to the interview.
