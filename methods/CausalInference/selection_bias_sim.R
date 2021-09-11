@@ -49,16 +49,20 @@ get_enrolled <- function(time_resources) {
 }
  
 get_enjoyment <- function(time_resources, subject_affinity) {
-  # z = 1 if w <= 1.3, z = u ^ 2 log(w) if w > 1.3
+  # z = 1 if w <= 1.3, z = u ^ 2 log(1 + w) if w > 1.3
   ifelse(time_resources <= 1.3, 1,
-         subject_affinity ^ 2 * log(time_resources))
+         subject_affinity ^ 2 * log(1 + time_resources))
 }
 
 get_hours <- function(enjoyment, time_resources) {
   
-  hours_unconstrained <- (
-      .5 + 3 * log(enjoyment) + rgamma(length(enjoyment), shape=3, scale=1)
-  )
+  E_hours_unconstrained <- -1.5 + 1.5 * enjoyment ^ (.35)
+  e_star <- rnorm(length(enjoyment), 0, 3)
+  hours_unconstrained <- E_hours_unconstrained + e_star
+  hours_unconstrained <- ifelse(hours_unconstrained < 0, 0, hours_unconstrained)
+
+  #hist(hours_unconstrained)
+  #plot(hours_unconstrained ~ enjoyment)
   ifelse(hours_unconstrained > time_resources, time_resources,
          hours_unconstrained)
 }
@@ -96,8 +100,6 @@ simulate_interventional <- function(N, hours) {
   grades
 }
 
-
-
 # Create data
 N <- 10000
 grade_do_1 <- simulate_interventional(N, 1)
@@ -123,6 +125,23 @@ df %>% filter(time_resources > 20, time_resources < 21) %>% pull(hours) %>% hist
 
 # keep selection bias off
 
+# Est 2
+do_hours = 10
+fixed_time_resources=30
+grade_delta=.1
+enjoyment_delta=1
+min_obs_per_leaf=35
+
+# P(z|w, s=1)
+df_w <- df %>% filter(time_resources > 19, time_resources < 21)
+hist(df_w$enjoyment)
+plot(density(df_w$enjoyment, bw=90))
+
+plot(df_w$hours ~ df_w$enjoyment)
+plot(df$hours ~ df$enjoyment)
+
+df_wxz <- df_w %>% filter(hours > 9, hours < 11, enjoyment > 150, enjoyment < 250)
+hist(df_wxz$grade)
 
 
 est_interventional_distribution <- function(
@@ -132,7 +151,8 @@ est_interventional_distribution <- function(
   grade_delta=.1,
   enjoyment_delta=1,
   min_obs_per_leaf=35,
-  n_trees=1000
+  n_trees=1000,
+  flambda=10
   ) {
   # Estimate interventional distribution via expression arrived at via do-calc
   # Pr(y | do(X)) = int_z P(Y | x, z, w, S = 1) P(Z | w, S = 1) dz
@@ -141,11 +161,11 @@ est_interventional_distribution <- function(
   # Set w (time_resources) to something, anything I want.
   p_grade_conditional <- RFCDE(df[, c("hours", "enjoyment", "time_resources")],
                                df["grade"], node_size=min_obs_per_leaf, n_trees=n_trees,
-                               mtry=3, flambda=10
+                               mtry=2, flambda=flambda
   )
   p_enjoyment_cond <- RFCDE(df[, c("time_resources")], df["enjoyment"],
                             node_size=min_obs_per_leaf, n_trees=n_trees,
-                            mtry=1, flambda=10)
+                            mtry=1, flambda=flambda)
 
   # Create a grid for which to predict conditional densities over
   grade_grid <- seq(-10, round(max(df$grade) * 1.1), grade_delta)
@@ -204,20 +224,14 @@ est_interventional_distribution <- function(
   return(dist_df)
 }
 
-f_grade_do_hours_eq_10 <- est_interventional_distribution(df, 10, 10)
-f_grade_do_hours_eq_20 <- est_interventional_distribution(df, 20, 10)
+f_grade_do_hours_eq_10 <- est_interventional_distribution(df, 10, fixed_time_resources=20,
+                                                          min_obs_per_leaf=15, flambda=1)
+f_grade_do_hours_eq_20 <- est_interventional_distribution(df, 20, fixed_time_resources=20)
 
 
+plot(density(simulate_interventional(N, do_hours), bw=1.5))
 grade_delta <- .1
 grade_grid <- seq(-10, 110, delta)
-
-E_grade_do_hours_eq_10 <- sum(grade_grid * f_grade_do_hours_eq_10 * grade_delta)
-E_grade_do_hours_eq_20 <- sum(grade_grid * f_grade_do_hours_eq_20 * grade_delta)
-
-E_grade_do_hours_eq_10
-E_grade_do_hours_eq_20
-
-E_grade_do_hours_eq_20 - E_grade_do_hours_eq_10
 
 plot(f_grade_do_hours_eq_10 ~ grade_grid, col='purple')
 points(density(grade_do_10), col='grey')
