@@ -101,7 +101,7 @@ simulate_interventional <- function(N, hours) {
 }
 
 # Create data
-N <- 10000
+N <- 100000
 grade_do_1 <- simulate_interventional(N, 1)
 grade_do_5 <- simulate_interventional(N, 5)
 grade_do_10 <- simulate_interventional(N, 10)
@@ -126,19 +126,119 @@ df %>% filter(time_resources > 20, time_resources < 21) %>% pull(hours) %>% hist
 # keep selection bias off
 
 # Est 2
-do_hours = 10
+do_hours <- 20
 fixed_time_resources=30
-grade_delta=.1
-enjoyment_delta=1
-min_obs_per_leaf=35
+left_slide = .9
+right_slide = 1.1
+
+# Idea: choose w such that z spans the range for your do_hours
 
 # P(z|w, s=1)
-df_w <- df %>% filter(time_resources > 19, time_resources < 21)
+df_w <- df %>% filter(time_resources > left_slide * fixed_time_resources,
+                      time_resources < right_slide * fixed_time_resources)
+
+df_wx <- df_w %>% filter(hours > do_hours * left_slide,
+                         hours < do_hours * right_slide)
+
+plot(density(df$enjoyment))
+lines(density(df_wx$enjoyment), col='green')
+
 hist(df_w$enjoyment)
-plot(density(df_w$enjoyment, bw=90))
+f_z <- density(df_w$enjoyment, bw=30)
+plot(f_z)
+
+f_z2 <- approxfun(f_z$x, f_z$y)
+integrate(f_z2, -60, 1290)
 
 plot(df_w$hours ~ df_w$enjoyment)
 plot(df$hours ~ df$enjoyment)
+
+
+z_cuts <- cut(df_w$enjoyment, 10)
+labs <- levels(z_cuts)
+df_prz <- data.frame(
+  lower = as.numeric( sub("\\((.+),.*", "\\1", labs) ),
+  upper = as.numeric( sub("[^,]*,([^]]*)\\]", "\\1", labs) ),
+  n_z = table(z_cuts),
+  pr_between = NA
+)
+for (i in 1:nrow(df_prz)) {
+  integral <- integrate(f_z2,  df_prz[i, "lower"], df_prz[i, "upper"])
+  df_prz[i, "pr_between"] <- integral$value
+}
+
+# Ensure probs sum to 1
+int_fz <- sum(df_prz$pr_between)
+df_prz$pr_between <- df_prz$pr_between / int_fz
+
+# Adjst lower and upper splits to cover 0 to infinity
+df_prz[1, "lower"] <- 0
+df_prz[nrow(df_prz), "upper"] <- 1E6 
+
+# Notes for paper
+# Is the do calculus a theoretical skeleton where I should wait for
+# researchers to add flesh, or should I jump in?
+
+do_hours <- 20
+left_slide <- .8
+right_slide <- 1.2
+
+# TODO: try an aggregator. Grouping by x doesn't seem to work
+min_n_for_density <- 2
+x_grid <- seq(-5, 110, .1)
+par(mfrow=c(4, 3))
+results <- data.frame()
+fy_x <- rep(0, length(x_grid))
+
+for (i in 1:nrow(df_prz)) {
+  df_wxz <- df_w %>% filter(hours > do_hours * left_slide,
+                            hours < do_hours * right_slide,
+                            enjoyment > df_prz[i, "lower"],
+                            enjoyment < df_prz[i, "upper"])
+  # Problem, when hours is 20, there are barely any lower enjoyment ratings
+  # Lower than about 200, when in the ordinary sample, near 0 is the mode
+  # I have to ensure that I see enjoyment across the whole range, even
+  # When hours is 20, unless I skip 20 and use that as an example.
+  # The mean is 7 for gods sake
+  title <- paste0("Z in [", df_prz[i, "lower"],
+                  ", ", z_upper=df_prz[i, "upper"], "], n=",
+                  nrow(df_wxz))
+  enough_for_density <- nrow(df_wxz) >= min_n_for_density
+  if (enough_for_density) {
+      d_y <- density(df_wxz$grade)
+      f_y <- approxfun(x=d_y$x, y=d_y$y)
+      y <- f_y(x_grid)
+      y[is.na(y)] <- 0
+      fy_weighted <- df_prz[i, "pr_between"] * y
+      fy_x <- fy_x + fy_weighted
+      plot(fy_weighted ~ x_grid, main=title)
+      res <- data.frame(z_lower=df_prz[i, "lower"], z_upper=df_prz[i, "upper"],
+                        x=x_grid, y=fy_weighted)
+      results <- rbind(results, res)
+  } else {
+    plot(1 ~ 1, type="n", main=title)
+    text(1, 1, "not enough\n points for\n density")
+  }
+}
+
+# Something is not right
+res_agg <- (
+  results %>% group_by(x) %>% dplyr::summarise(fy_x=sum(fy_weighted)) %>% as.data.frame()
+  )
+summary(res_agg)
+#f_y_x <- approxfun(x=res_agg$x, y=res_agg$y)
+plot(res_agg$fy_x ~ as.numeric(res_agg$x))
+par(mfrow=c(1, 1))
+
+f_yx_fn <- approxfun(x=x_grid, y=fy_x)
+int_fyx <- integrate(f_yx_fn, -5, 110)   # Why exactly 2?
+int_fyx
+f_yx_fn <- approxfun(x=x_grid, y=fy_x / int_fyx$value)
+
+par(mfrow=c(1, 1))
+plot(f_yx_fn(x_grid) ~ x_grid)
+lines(density(simulate_interventional(N, do_hours)), col='blue')
+
 
 df_wxz <- df_w %>% filter(hours > 9, hours < 11, enjoyment > 150, enjoyment < 250)
 hist(df_wxz$grade)
