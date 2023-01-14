@@ -25,9 +25,7 @@ y1 <- lambda1 * L + e_1
 y2 <- lambda2 * L + e_2
 y3 <- lambda3 * L + e_3
 
-
 df <- data.frame(y1=y1, y2=y2, y3=y3)
-
 
 # Now recover the parameters with lavaan
 
