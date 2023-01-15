@@ -25,34 +25,26 @@ y1 <- lambda1 * L + e_1
 y2 <- lambda2 * L + e_2
 y3 <- lambda3 * L + e_3
 
-
-y1b <- scale(y1, scale=F)
-y2b <- scale(y2, scale=F)
-y3b <- scale(y3, scale=F)
-
-
-df2 <- data.frame(y1=y1b, y2=y2b, y3=y3b)
+df <- data.frame(y1=y1, y2=y2, y3=y3)
 
 # Now recover the parameters with lavaan
 
-## By default, lavaan fixes the first loading to 1
-model_string <- ' L =~ y1 + y2 + y3'
-my_cfa_default <- cfa(model_string, data = df2)
+# We can tell levaan to use latent variable variance = 1 constraint w syntax below
+model_string <- 
+' L =~ NA*y1 + y1 + y2 + y3 
 
-# Note that .y1 is actually the residual e1.
-summary(my_cfa_default)
-coef(my_cfa_default)
-
-# We can tell levaan to use latent variable variance = 1 constraint instead
-model_string <- ' L =~ NA*y1 + y1 + y2 + y3 '
-my_cfa <- cfa(model_string, data = df2, std.lv=TRUE)
+  y1 ~ 1
+  y2 ~ 1
+  y3 ~ 1
+'
+my_cfa <- cfa(model_string, data = df, std.lv=TRUE)
 
 summary(my_cfa)
 # The following should closely match our parameters (depending on N)
-coef(my_cfa)
+coef(my_cfa) # Note that the intercepts are in there
 
 # get the factor scores from Lavaan
-df2$L_hat <- as.numeric(predict(my_cfa))
+df$L_hat <- as.numeric(predict(my_cfa))
 
 # Now apply the covariance formula to the factor scores
 coefs <- as.numeric(coef(my_cfa))
@@ -61,9 +53,13 @@ lambda1_hat <- coefs[1]
 lambda2_hat <- coefs[2]
 lambda3_hat <- coefs[3]
 
-sigma_e1_hat <- sqrt(coefs[4])
-sigma_e2_hat <- sqrt(coefs[5])
-sigma_e3_hat <- sqrt(coefs[6])
+mu1_hat <- coefs[4]
+mu2_hat <- coefs[5]
+mu3_hat <- coefs[6]
+
+sigma_e1_hat <- sqrt(coefs[7])
+sigma_e2_hat <- sqrt(coefs[8])
+sigma_e3_hat <- sqrt(coefs[9])
 
 E_cov_partial_hat <- matrix(
   c(lambda1_hat^2 + sigma_e1_hat^2, lambda1_hat * lambda2_hat, lambda1_hat * lambda3_hat,
@@ -77,15 +73,13 @@ lambda_vec_hat <- matrix(c(lambda1_hat, lambda2_hat, lambda3_hat), nrow=1)
 # "Hat matrix" for creating L hat from observables
 hat_matrix <- lambda_vec_hat %*% solve(E_cov_partial_hat)
 
-# Match the first observiation
-hat_matrix %*% matrix(as.numeric(df2[1, c("y1", "y2", "y3")]), nrow=3)
-df2[1, "L_hat"]
+# Using the interecepts estimated from the model, center the manifest variables
+df$y1_centered <- df$y1 - mu1_hat
+df$y2_centered <- df$y2 - mu2_hat
+df$y3_centered <- df$y3 - mu3_hat
 
-# Match the second observation
-hat_matrix %*% matrix(as.numeric(df2[2, c("y1", "y2", "y3")]), nrow=3)
-df2[2, "L_hat"]
+# Now do it for the whole data set for the centered variables
+df$L_hat2 <- as.matrix(df[, c("y1_centered", "y2_centered", "y3_centered")]) %*% t(hat_matrix)
 
-# Now do it for the whole data set
-df2$L_hat2 <- as.matrix(df2[, c("y1", "y2", "y3")]) %*% t(hat_matrix)
-head(df2)
-tail(df2)
+cat("Observe for 3 observations that we have matched successfully\n")
+df[1:3, c("L_hat", "L_hat2")]
