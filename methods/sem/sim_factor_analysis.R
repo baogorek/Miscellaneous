@@ -2,7 +2,7 @@ library(dplyr)
 library(lavaan)
 
 # Let's start with a structure to see if we can find it with EFA. 1 Group
-N <- 10000
+N <- 1000 * 12
 factor_corr <- .3
 k_factors <- 3
 items_per_factor <- 4
@@ -64,6 +64,35 @@ model_string <- '
 '
 my_cfa <- cfa(model_string, data = manifest_df, std.lv=TRUE)
 summary(my_cfa)
+coef(my_cfa)
+
+# CFA: Missing data in the extreme - pulse surveys
+manifest_pulse <- manifest_df
+manifest_pulse <- data.frame(matrix(rep(NA, times=N * 12 * 12), ncol=12))
+names(manifest_pulse) <- names(manifest_df)
+manifest_pulse$group <- NA
+j <- 0
+pulse_row <- 1
+group_index <- 1
+for (i in 1:nrow(manifest_df)) {
+  for (k in 1:12) {
+    manifest_pulse[pulse_row, (j %% 12) + 1] <-  manifest_df[i, (j %% 12) + 1]
+    manifest_pulse[pulse_row, "group"] <- group_index
+    j <- j + 1
+    pulse_row <- pulse_row + 1
+  }
+}
+
+manifest_pulse %>% tail(2)
+manifest_df %>% tail(2)
+
+manifest_pulse %>% as.matrix() %>% mean(., na.rm=TRUE)
+manifest_df %>% as.matrix() %>% mean()
+
+# I've got to construct the likelihood manually, then extend to different ns per question
+
+
+
 
 # On to Exploratory Factor Analysis
 
@@ -121,4 +150,5 @@ print(my_efa)
 
 # Adjust cut (default is .3)
 psych::fa.diagram(my_efa, cut=.1)
+
 
