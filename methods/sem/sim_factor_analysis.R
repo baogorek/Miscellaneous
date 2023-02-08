@@ -312,6 +312,72 @@ L_hats %>% head()
 
 predict(my_cfa) %>% head()
 
+
+# Let's maximize the likelihood -----
+
+## Means will be used to center, not part of the optimization equation
+### Though you might need to rethink that for different sample sizes per row / column combo
+
+loadings_start <- ptmodel[1:12, "start"]
+latent_covs_start <- ptmodel[13:15, "start"]
+manifest_means_start <- ptmodel[16:27, "start"]  # Note that ests = start vals
+manifest_variances_start <- ptmodel[28:39, "start"]  # Note that ests = start vals
+
+# Match the pattern of ptmodels as much as possible
+params <- c(loadings_start, latent_covs_start, log(manifest_variances_start))
+
+means_mat <- matrix(rep(1, times = 12 * nrow(manifest_df)), ncol=12) %*% diag(manifest_means_est)
+X_mat <- manifest_df %>% select(starts_with("x")) %>% as.matrix()
+X_mat_centered <- X_mat - means_mat
+
+
+get_neg_log_likelihood <- function(params) {
+   # using manifest_df, and temporarily, manifest_means from the environment
+   loadings <- params[1:12]
+   latent_covs <- params[13:15]
+
+   # TODO: transform so these have to be positive
+   manifest_variances <- exp(params[16:27])
+
+   print(paste("params <- c(", paste(params, collapse=','), ")\n"))
+
+   Sigma <- create_covariance_matrix(loadings, manifest_variances, latent_covs)
+
+   Sigma_inv <- solve(Sigma)
+   #R <- chol(Sigma)
+   #R_inv <- solve(R)
+
+   Sigma_det <- det(Sigma)
+
+   # DO it naive, then do it better
+   log_like_vec <- c() 
+   for (i in 1:nrow(manifest_df)) {
+     x_vec <- X_mat_centered[i, ]
+     #R_inv_x <- R_inv %*% x_vec
+     log_like_vec <- c(log_like_vec,
+       #-.5 * log(Sigma_det) - .5 * as.numeric(t(R_inv_x) %*% R_inv_x)
+       -.5 * log(Sigma_det) - .5 * as.numeric(t(x_vec) %*% Sigma_inv %*% x_vec)
+     )
+   }
+   -sum(log_like_vec)
+}
+# 66799.74 is the value to beat (get smaller than)
+# Something is happening where I'm able to get down to 57302.09
+
+
+# Recalling Cholesky decomp for symetric, positive definite matrix
+M = matrix(c(13, 9, 9, 34), nrow=2)
+M
+R = chol(M)
+t(R) %*% R
+
+params_start <- c(loadings_start, latent_covs_start, log(manifest_variances_start))
+my_optim <- optim(params_start, get_neg_log_likelihood, method="L-BFGS-B", control=list(maxit=1000))
+my_optim
+my_optim$par
+
+get_log_likelihood(my_optim$par)
+
 # Back to the original 12-var df, on to Exploratory Factor Analysis
 
 
