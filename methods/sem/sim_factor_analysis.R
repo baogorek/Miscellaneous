@@ -164,7 +164,7 @@ manifest_means_est <- ptmodel[16:27, "est"]  # Note that ests = start vals
 manifest_variances <- ptmodel[28:39, "start"]
 ### And then latent variances and intercepts are fixed
 
-## Step 1. Get the L-hats (the M-step)
+## Functions
 create_block_matrix1 <- function(lambda_vec, sigma_sq_vec) {
   stopifnot(length(lambda_vec) == 4)
   stopifnot(length(sigma_sq_vec) == 4)
@@ -336,40 +336,41 @@ get_neg_log_likelihood <- function(params) {
    loadings <- params[1:12]
    latent_covs <- params[13:15]
 
-   # TODO: transform so these have to be positive
    manifest_variances <- exp(params[16:27])
 
    print(paste("params <- c(", paste(params, collapse=','), ")\n"))
 
    Sigma <- create_covariance_matrix(loadings, manifest_variances, latent_covs)
 
-   Sigma_inv <- solve(Sigma)
-   #R <- chol(Sigma)
-   #R_inv <- solve(R)
+   #Sigma_inv <- solve(Sigma)
 
-   Sigma_det <- det(Sigma)
+   U <- chol(Sigma)  # An upper triangular matrix, or L^T in L * L^T
+
+   #Sigma_copy <- t(U) %*% U
+
+   det_U <- prod(diag(U))  # Easy determinent
+
+   U_inv <- backsolve(U, diag(12), upper.tri=TRUE)
+
+   #Sigma_inv_copy <- U_inv %*% t(U_inv)
+
+   #Sigma_det <- det_U ^ 2
 
    # DO it naive, then do it better
-   log_like_vec <- c() 
-   for (i in 1:nrow(manifest_df)) {
+   n <- nrow(manifest_df)
+   squares_vec <- c() 
+   for (i in 1:n) {
      x_vec <- X_mat_centered[i, ]
-     #R_inv_x <- R_inv %*% x_vec
-     log_like_vec <- c(log_like_vec,
-       #-.5 * log(Sigma_det) - .5 * as.numeric(t(R_inv_x) %*% R_inv_x)
-       -.5 * log(Sigma_det) - .5 * as.numeric(t(x_vec) %*% Sigma_inv %*% x_vec)
+     L_inv_x <- t(U_inv) %*% x_vec  # L is U^T
+     squares_vec <- c(squares_vec,
+        as.numeric(t(L_inv_x) %*% L_inv_x)
+       #-.5 * log(Sigma_det) - .5 * as.numeric(t(x_vec) %*% Sigma_inv %*% x_vec)
      )
    }
-   -sum(log_like_vec)
+   loglike <- -n * log(det_U) - .5 * sum(squares_vec)
+   -loglike
 }
-# 66799.74 is the value to beat (get smaller than)
-# Something is happening where I'm able to get down to 57302.09
 
-
-# Recalling Cholesky decomp for symetric, positive definite matrix
-M = matrix(c(13, 9, 9, 34), nrow=2)
-M
-R = chol(M)
-t(R) %*% R
 
 params_start <- c(loadings_start, latent_covs_start, log(manifest_variances_start))
 my_optim <- optim(params_start, get_neg_log_likelihood, method="L-BFGS-B", control=list(maxit=1000))
