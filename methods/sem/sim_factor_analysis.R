@@ -356,7 +356,6 @@ get_neg_log_likelihood <- function(params) {
 
    #Sigma_det <- det_U ^ 2
 
-   # DO it naive, then do it better
    n <- nrow(manifest_df)
    squares_vec <- c() 
    for (i in 1:n) {
