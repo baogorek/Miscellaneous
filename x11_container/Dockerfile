@@ -7,6 +7,7 @@ ENV DEBIAN_FRONTEND noninteractive
 RUN apt update \
     && apt install -y tmux \
                       vim \
+                      curl \
                       git \
                       openssh-server \
                       xauth \
@@ -24,8 +25,6 @@ RUN apt update \
     && grep "^X11UseLocalhost" /etc/ssh/sshd_config || echo "X11UseLocalhost no" >> /etc/ssh/sshd_config \
     && cat /password.txt /password.txt | passwd \
     && rm /password.txt
-    #&& cd ~ \
-    #&& /bin/bash
 
 RUN git clone https://github.com/baogorek/Miscellaneous.git \
     && /bin/bash -c "source Miscellaneous/profile-setup.sh"
@@ -37,7 +36,7 @@ RUN python3 -m venv ~/envs/ben \
 
 
 # Install R packages
-#RUN Rscript -e 'install.packages(c("ggplot2", "dplyr", "tidyr", "readr"))'
+RUN Rscript -e 'install.packages(c("ggplot2", "dplyr", "tidyr", "readr"))'
 
 EXPOSE 22
 ENTRYPOINT ["sh", "-c", "/usr/sbin/sshd && tail -f /dev/null"]
