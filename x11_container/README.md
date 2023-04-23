@@ -20,7 +20,7 @@ docker build -t x11 .
 
 Start the container up when you restart your local machine
 ```
-docker run -itd -p 2222:22 --mount source=devl-volume,target=/devl --name x11_image --memory 6GB x11
+docker run -itd -p 2222:22 --mount source=devl-volume,target=/root/devl --name my_x11_container x11
 ```
 
 Whenver you want to use your container, ssh in

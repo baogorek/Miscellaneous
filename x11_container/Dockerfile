@@ -24,15 +24,19 @@ RUN apt update \
     && sed -i "s/^.*X11UseLocalhost.*$/X11UseLocalhost no/" /etc/ssh/sshd_config \
     && grep "^X11UseLocalhost" /etc/ssh/sshd_config || echo "X11UseLocalhost no" >> /etc/ssh/sshd_config \
     && cat /password.txt /password.txt | passwd \
-    && rm /password.txt
+    && rm /password.txt \
+    && cd ~
 
 RUN git clone https://github.com/baogorek/Miscellaneous.git \
-    && /bin/bash -c "source Miscellaneous/profile-setup.sh"
+    && cd Miscellaneous \
+    && /bin/bash -c "source profile-setup.sh" \
+    && cd ~
 
 # Install Python packages
 RUN python3 -m venv ~/envs/ben \
     && /bin/bash -c "source ~/envs/ben/bin/activate" \
-    && pip install tensorflow pandas numpy datascroller ipython opencv-python matplotlib
+    && pip install tensorflow pandas numpy datascroller ipython opencv-python matplotlib \
+       scikit-learn
 
 
 # Install R packages
