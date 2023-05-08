@@ -2,18 +2,17 @@ library(dplyr)
 library(psych)
 library(GPArotation)
 library(lavaan)
+library(semPlot)
 
+# Read in only complete cases from the example data set -----------
 data(bfi)
 df <- bfi[, 1:25] %>%
-  filter(complete.cases(.))
+  filter(complete.cases(.))  # Not going to think too hard about this; it's a demo
 
 
-# Factor analysis with the Oblimin rotation
-# -----------------------------------------------------
+# Oblimin rotation demonstration --------------------
 
 ## Perform factor analysis with Oblimin rotation
-#fa_bfi <- fa(df, nfactors = 3, rotate = "oblimin", fm="ml")
-
 fa_none <- fa(df, nfactors = 3, rotate = "none")
 print(fa_none$loadings, cutoff=1E-6, digits=5)
 
@@ -32,8 +31,7 @@ print(fa_oblimin3$loadings, cutoff=1E-6, digits=3)
 fa_biquartimin <- oblimin(fa_none$loadings, gam=.5)
 print(fa_biquartimin$loadings, cutoff=1E-6, digits=5)
 
-# First, calculate the Quartimin criterion and show that it is minimized by the oblimin loadings, but not the others
-
+## calculate the Quartimin criterion and show that it is minimized by the oblimin loadings
 get_quartimin_obj <- function(Lambda) {
   class(Lambda) <- "matrix"
   A <- Lambda ^ 2 
@@ -42,13 +40,13 @@ get_quartimin_obj <- function(Lambda) {
   B <- A %*% N
   sum(A * B) / 4
 }
+
 get_quartimin_obj(fa_none$loadings)
 get_quartimin_obj(fa_biquartimin$loadings)
 get_quartimin_obj(fa_oblimin$loadings)
 
 
-# Next step is a CFA of bfi, and then run oblimin on it
-
+# CFA of the bfi complete cases, no cross-loadings  ----------
 model_string <- '
   L1 =~ NA*A1 + A1 + A2 + A3 + A4 + A5
   L2 =~ NA*C1 + C1 + C2 + C3 + C4 + C5 
@@ -93,17 +91,16 @@ model_string <- '
   O5 ~ 1
 '
 my_cfa <- cfa(model_string, data = df, std.lv=TRUE)
-summary(my_cfa)
-coef(my_cfa)
+my_cfa
+semPaths(my_cfa, what="est", layout = "tree", intercepts=FALSE, sizeMan=2.5)
 
 # Get the loadings matrix from the model fit
 loading_matrix <- lavInspect(my_cfa, "est")$lambda
 oblimin_of_cfa <- oblimin(loading_matrix)
 
-# Why are these different?
-help(print.GPArotation)
-print(oblimin_of_cfa, sortLoadings=F)  # if you sort the loadings, it will look different
-print(oblimin_of_cfa$loadings, cutoff=1E-6, digits=3)
+# if you sort the loadings, it will look different. See help(print.GPArotation)
+print(loading_matrix, sortLoadings=FALSE)
+print(oblimin_of_cfa$loadings, digits=3)
 
 
 # Now, refit with a cross-product added, based on modification indicies
@@ -111,7 +108,7 @@ print(oblimin_of_cfa$loadings, cutoff=1E-6, digits=3)
 modificationIndices(my_cfa, sort=TRUE) %>% head()
 
 # Highest cross-loading modification index:
- L3 =~  N4 200.789
+# L3 =~  N4 200.789
 # Before, Chi-square statistic was 4165.5
 
 model_string2 <- '
@@ -159,17 +156,14 @@ model_string2 <- '
 '
 my_cfa2 <- cfa(model_string2, data = df, std.lv=TRUE)
 my_cfa2
-summary(my_cfa2)
-coef(my_cfa)
 
+# Chi-square difference is a little larger than what modificationIndices told me it would be
 4165.5 - 3955.5
-4165.5 - 4040.5 
+
+semPaths(my_cfa2, what="est", layout = "tree", intercepts=FALSE, sizeMan=2.5)
 
 loading_matrix2 <- lavInspect(my_cfa2, "est")$lambda
-loading_matrix2  # Look at the N4 record
-
 oblimin_of_cfa2 <- oblimin(loading_matrix2)
-print(oblimin_of_cfa2, sortLoadings=F)
-print(oblimin_of_cfa2$loadings, cutoff=1E-6, digits=3)
 
-# Almost reminds me of Type I vs Type III SS when you just barely lose orthogonality
+print(loading_matrix2, sortLoadings=F)
+print(oblimin_of_cfa2$loadings, digits=3)
