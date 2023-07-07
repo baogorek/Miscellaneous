@@ -7,7 +7,7 @@ import pandas as pd
 
 
 @asset
-def get_source_data():
+def get_source_data() -> pd.DataFrame:
    df = pd.DataFrame({'x': [1, 2, 3], 'y': [4, 5, 6]})
    return df 
 
@@ -31,4 +31,11 @@ def get_r_transformed_data(get_source_data):
     descriptor = flight.descriptor
     reader = client.do_get(flight.endpoints[0].ticket)
     read_table = reader.read_all()
-    return read_table.to_pandas()
+    my_df2 = read_table.to_pandas()
+    return Output(
+        value = my_df2,
+        metadata={
+            "num_records": len(my_df2),
+            "preview": MetadataValue.md(my_df2.head().to_markdown()),
+        }
+    )
