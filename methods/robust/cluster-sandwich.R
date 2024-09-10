@@ -33,16 +33,17 @@ generate_dependent_binary_data <- function(N, n, logit_mu, logit_sigma,
   return(df)
 }
 
-generate_dependent_poisson_data <- function(N, n, mu, sigma) {
+generate_dependent_poisson_data <- function(N, n_low, n_high, mu, sigma) {
   # Generate data with dependency within cluster, modeled by random logit means--
   cluster_poisson_means <- rnorm(N, mean=mu, sd=sigma)
   cluster_df <- data.frame(cluster = 1:N, mean=cluster_poisson_means)
-  
-  df <- data.frame(cluster=sort(rep(seq(1, N), n)), obs=rep(seq(1, n), N)) |>
+ 
+  dfs <- lapply(1:N, function(i) data.frame(cluster=i, obs=seq(1, sample(seq(n_low, n_high), 1))))
+  df <- Reduce(`rbind`, dfs) |>
     inner_join(cluster_df, by="cluster")
   
   df$y <- rpois(nrow(df), df$mean)
-  df$x <- round(rnorm(N * n), 3)  # Covariate: no relation to response
+  df$x <- round(rnorm(nrow(df)), 3)  # Covariate: no relation to response
   return(df)
 }
 
@@ -55,18 +56,28 @@ generate_dependent_cfa_data <- function(N, n, mu_bar, sd_of_means) {
   sigma_e1 <- sqrt(.1)
   sigma_e2 <- sqrt(.1)
   sigma_e3 <- sqrt(.1)
-  
-  # Generate the data
+
+  #item_means <- rnorm(N, mean=mu_bar, sd=sd_of_means)
+  cluster_df <- data.frame(cluster = 1:N)
   L <- rnorm(N, mean=0, sd=1)
-  e_1 <- rnorm(N, mean=0, sd=sigma_e1)
-  e_2 <- rnorm(N, mean=0, sd=sigma_e2)
-  e_3 <- rnorm(N, mean=0, sd=sigma_e3)
+  cluster_df$mean1 <- lambda1 * L
+  cluster_df$mean2 <- lambda2 * L
+  cluster_df$mean3 <- lambda3 * L
+
+  df <- data.frame(cluster=sort(rep(seq(1, N), n)), obs=rep(seq(1, n), N)) |>
+    inner_join(cluster_df, by="cluster")
+
+  # Induce correlation from nested subjects having the same latent factor  val
+  # Generate independent errors
+  e_1 <- rnorm(nrow(df), mean=0, sd=sigma_e1)
+  e_2 <- rnorm(nrow(df), mean=0, sd=sigma_e2)
+  e_3 <- rnorm(nrow(df), mean=0, sd=sigma_e3)
+
+  df$y1 <- df$mean1 + e_1
+  df$y2 <- df$mean2 + e_2
+  df$y3 <- df$mean3 + e_3
   
-  y1 <- lambda1 * L + e_1
-  y2 <- lambda2 * L + e_2
-  y3 <- lambda3 * L + e_3
-  
-  df <- data.frame(y1=y1, y2=y2, y3=y3)
+  df <- df %>% select(cluster, y1, y2, y3) 
   return(df)
 }
 
@@ -100,7 +111,8 @@ for (rep in 1:M) {
 # Actual vs nominal standard error of beta 
 cat("Model implied:", mean(results$se_beta), "vs empirical:", sd(results$beta), "\n")
 
-lavInspect(cfa_mod, what = "loglik.casewise")
+
+cfa_mod <- cfa(model_string, data = df, std.lv=TRUE, cluster="cluster")
 
 # https://cran.r-project.org/web/packages/lavaan/lavaan.pdf
 # It does have an estfun!
@@ -109,48 +121,18 @@ estfun(cfa_mod)
 cluster = "cluster",
 
 
-# Binary data experiment
-
-M <- 5000
-N <- 300
-n <- 5 
-logit_mu <- 0  
-logit_sigma <- 50
-
-results <- data.frame()
-for (rep in 1:M) {
-  df <- generate_dependent_binary_data(N, n, logit_mu, logit_sigma, TRUE, TRUE)
-  glm_summary <- summary(glm(y ~ x, data=df, family="binomial"))
-  beta <- glm_summary$coefficients %>% as.data.frame() %>% pull(`Estimate`) %>% tail(1)
-  se_beta <- glm_summary$coefficients %>% as.data.frame() %>% pull(`Std. Error`) %>% tail(1)
-  p_beta <- glm_summary$coefficients %>% as.data.frame() %>% pull(`Pr(>|z|)`) %>% tail(1)
-
-  # Now from my cluster sandwhich formula ----
-  g_mat <- estfun(glm_mod)
-  vcov_ben <- ben_cluster_sandwich(gmat, df$cluster) 
-  se_beta_ben <- sqrt(vcov_ben[2, 2])
-
-  results <- rbind(results, data.frame(rep=rep, beta=beta, se_beta=se_beta, p_beta=p_beta, se_beta_ben = se_beta_ben))
-}
-
-# Actual vs nominal Type I error rate
-mean(results$p_beta < .05)
-
-# Actual vs nominal standard error of beta 
-cat("Model implied:", mean(results$se_beta), "vs empirical:", sd(results$beta), "\n") 
-
-
 # Poisson case -----------------------------
 
 M <- 5000
 N <- 300
-n <- 7
+n_low <- 3
+n_high <- 10
 mu_bar <- 30
 sd_of_means <- 5
 
 results <- data.frame()
 for (rep in 1:M) {
-  df <- generate_dependent_poisson_data(N, n, mu_bar, sd_of_means)
+  df <- generate_dependent_poisson_data(N, n_low, n_high, mu_bar, sd_of_means)
   glm_mod <- glm(y ~ x, data=df, family="poisson")
   glm_summary <- summary(glm_mod)
   beta <- glm_summary$coefficients %>% as.data.frame() %>% pull(`Estimate`) %>% tail(1)
@@ -173,7 +155,6 @@ mean(results$p_beta < .05)
 
 # Actual vs nominal standard error of beta 
 cat("Model implied:", mean(results$se_beta), "vs empirical:", sd(results$beta),
-    "vs Ben Sandwich", mean(results$se_beta_ben),
     "vs Sandwich package", mean(results$se_beta_sandwich),
     "\n")
 
@@ -209,12 +190,8 @@ N * n * vcov(glm_mod) %*% meat(glm_mod) %*% vcov(glm_mod)
 
 # Bread is the same. It's only the meat that is different
 
-# There's probably a kronecker product way to do this, but...
-# ben_cluster_sandwich function which is wrong
 g_mat2 <- g_mat %>% as.data.frame()
 g_mat2$cluster <- df$cluster
-
-
 
 g_cluster_sums <- aggregate(g_mat, by=list(cluster=df$cluster), FUN=sum)
 g_cluster_sums$cluster <- NULL  # same as row number
@@ -226,11 +203,13 @@ meatCL(glm_mod, cluster=df$cluster, type="HC0", cadjust=FALSE)
 
 
 
-# Need to match:
-# Crazy that it's still the same C
+# It's still the same c
+c <- 1 / nrow(df) 
+B <- bread(glm_mod)
 M2 <- c * meatCL(glm_mod, cluster=df$cluster, type="HC0", cadjust=FALSE)
 B %*% M2 %*% B
 vcovCL(glm_mod, cluster=df$cluster, type="HC0", cadjust=FALSE)
+
 
 # The bread is the unscaled VCOV (probably because of sqrt(n) (theta_hat - theta) is the form used)
 (1 / nrow(df)) * bread(glm_mod)
