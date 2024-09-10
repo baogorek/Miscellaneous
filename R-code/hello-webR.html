@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>webR Hello World</title>
+
+  <script type="module">
+    import('https://webr.r-wasm.org/latest/webr.mjs').then(async ({ WebR }) => {
+      const webR = new WebR();
+      await webR.init();
+
+      const rCode = `
+        x = 5 + 7
+        print(paste("Hello, World! x=", x))
+      `;
+
+      const result = await webR.evalR(rCode);
+      const outputText = await result.toArray();
+      console.log(outputText.join(''));
+      document.getElementById("r-output").textContent = outputText.join('');
+
+      const canvas = document.getElementById("r-canvas");
+
+      const rCode2 = `
+          webr::install("ggplot2")
+          library(ggplot2)
+          webr::canvas()
+          x <- rnorm(100)
+          y <- rnorm(100)
+          df <- data.frame(x=x, y=y)
+          # Plot with axes, points, and labels all in one frame
+          p <- ggplot(df, aes(x=x, y=y)) + geom_point()
+          print(p)
+          dev.off()
+      `;
+
+      await webR.evalRVoid(rCode2);
+
+        for (;;) {
+          const output = await webR.read();
+          switch (output.type) {
+            case 'canvas':
+              if (output.data.event === 'canvasImage') {
+                canvas.getContext('2d').drawImage(output.data.image, 0, 0);
+              } else if (output.data.event === 'canvasNewPage') {
+                 console.log("Not doing anything");
+              }
+              break;
+            default:
+              console.log(output);
+          }
+        }
+
+    });
+  </script>
+</head>
+<body>
+  <h1>Hello World with webR</h1>
+
+  <div id="r-output"></div>
+  <canvas id="r-canvas" width="1008" height="1008"></canvas>
+</body>
+</html>
