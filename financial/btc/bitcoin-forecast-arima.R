@@ -2,8 +2,38 @@
 library(forecast)
 library(dplyr)
 library(readr)
+library(lubridate)
+
+
+# CPI-U, not seasonally adjusted
+cpi_df <- read_csv("cpi-CPIAUCNS.csv")
+
+# Since CPI for July 2020 (for example) represents the average for all of July,
+# it is conceptually aligned with financial prices recorded on July 31, 2020.
+cpi_df <- cpi_df %>%
+  mutate(adj_observation_date = ceiling_date(observation_date, "month") - days(1)) %>%
+  select(date=adj_observation_date, cpi=CPIAUCNS)
+
+# Impute a CPI for Feb 2025
+latest_cpi <- cpi_df %>% filter(date == "2025-01-31") %>% pull(cpi)
+estimated_cpi <- latest_cpi * (1 + 0.025 / 12)  # 2.5% annual inflation
+
+cpi_df <- cpi_df %>%
+  add_row(date = as.Date("2025-02-28"), cpi = estimated_cpi)
+
+plot(cpi ~ date, data = cpi_df)
 
 df <- read_csv("btc_month_end_closes.csv")
+
+# Create an inflation adjusted btc series, using the CPI for December 2019
+cpi_base <- cpi_df %>% filter(date == "2019-12-31") %>% pull(cpi)
+
+df <- df %>%
+  inner_join(cpi_df, by="date") %>%
+  mutate(adj_close = close * (cpi_base / cpi))
+
+plot(close ~ date, data = df)
+lines(adj_close ~ date, data = df, col = "blue")
 
 future_steps <- 12
 future_dates <- seq.Date(max(df$date) + 1, by = "month", length.out = future_steps + 1) - 1
@@ -17,10 +47,12 @@ df$t <- 1:nrow(df)
 # Trying to force an outlier here
 df[df$t == 177, "close"] = 250000
 
-df$log_close <- log(df$close)
 
-plot(close ~ date, data=df)
-plot(log_close ~ date, data=df)
+df$log_close_orig <- log(df$close)
+df$log_close <- log(df$adj_close)
+
+plot(log_close ~ date, data=df, type = "l")
+lines(log_close_orig ~ date, data=df, col="blue")
 
 t_stop <- 140   # we'll need to put this in a grid
 df$t_before_stop <- ifelse(df$t <= t_stop, df$t, 0)

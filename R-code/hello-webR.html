@@ -10,6 +10,7 @@
       await webR.init();
 
       const rCode = `
+        webr::install("ggplot2")
         x = 5 + 7
         print(paste("Hello, World! x=", x))
       `;
@@ -20,36 +21,64 @@
       document.getElementById("r-output").textContent = outputText.join('');
 
       const canvas = document.getElementById("r-canvas");
+      if (!canvas) {
+        console.error('Canvas element not found');
+      }
 
       const rCode2 = `
-          webr::install("ggplot2")
-          library(ggplot2)
+
           webr::canvas()
-          x <- rnorm(100)
-          y <- rnorm(100)
-          df <- data.frame(x=x, y=y)
-          # Plot with axes, points, and labels all in one frame
-          p <- ggplot(df, aes(x=x, y=y)) + geom_point()
-          print(p)
+          plot(1:10, 1:10, main = "Simple Plot")
           dev.off()
+
       `;
 
       await webR.evalRVoid(rCode2);
 
-        for (;;) {
-          const output = await webR.read();
-          switch (output.type) {
-            case 'canvas':
-              if (output.data.event === 'canvasImage') {
-                canvas.getContext('2d').drawImage(output.data.image, 0, 0);
-              } else if (output.data.event === 'canvasNewPage') {
-                 console.log("Not doing anything");
-              }
-              break;
-            default:
-              console.log(output);
-          }
+      for (;;) {
+        const output = await webR.read();
+        switch (output.type) {
+          case 'canvas':
+            if (output.data.event === 'canvasImage') {
+              canvas.getContext('2d').drawImage(output.data.image, 0, 0);
+            } else if (output.data.event === 'canvasNewPage') {
+               console.log("Not doing anything");
+            }
+            break;
+          default:
+            console.log(output);
         }
+      }
+
+     (async function() {
+       try {
+         // Create an OffscreenCanvas
+         const offscreen = new OffscreenCanvas(200, 200);
+         const ctx = offscreen.getContext('2d');
+     
+         // Draw a red rectangle
+         ctx.fillStyle = 'red';
+         ctx.fillRect(0, 0, 200, 200);
+     
+         // Transfer to ImageBitmap
+         const bitmap = offscreen.transferToImageBitmap();
+     
+         // Create an on-screen canvas
+         const canvas = document.createElement('canvas');
+         canvas.width = 200;
+         canvas.height = 200;
+         document.body.appendChild(canvas);
+     
+         const context = canvas.getContext('2d');
+         context.drawImage(bitmap, 0, 0);
+     
+         console.log('OffscreenCanvas test succeeded.');
+       } catch (error) {
+         console.error('OffscreenCanvas test failed:', error);
+       }
+     })();
+
+
 
     });
   </script>
