@@ -65,10 +65,17 @@ for (t_stop in t_list) {
       round(coef(my_mod)["t_before_stop"] ^ 2 / (4 * abs(coef(my_mod)["t2_before_stop"])), 2), "\n")
 }
 
-plot(aic_vec ~ t_list)
+plot(aic_vec ~ t_list, xlab = "Month (t)", ylab = "AIC (fit statistic)")
+
+# t_stop of 143 corresponds to 2022-05-31 has AIC 84.23 has sigma2 0.09 has loglike -36.12 rho 0.95 plateau 12.11 theoretical plateau 12.54
+# t_stop of 144 corresponds to 2022-06-30 has AIC 85.71 has sigma2 0.09 has loglike -36.85 rho 0.94 plateau 12.28 theoretical plateau 12.1
+# t_stop of 145 corresponds to 2022-07-31 has AIC 86.09 has sigma2 0.09 has loglike -37.05 rho 0.94 plateau 12.19 theoretical plateau 12.29
+# t_stop of 146 corresponds to 2022-08-31 has AIC 86.17 has sigma2 0.09 has loglike -37.09 rho 0.94 plateau 12.22 theoretical plateau 12.22
+# t_stop of 147 corresponds to 2022-09-30 has AIC 86.06 has sigma2 0.09 has loglike -37.03 rho 0.94 plateau 12.24 theoretical plateau 12.17
 
 # Final model
 t_stop <- 146
+#t_stop <- 143
 df$t_before_stop <- ifelse(df$t <= t_stop, df$t, 0)
 df$t2_before_stop <- ifelse(df$t <= t_stop, df$t ^ 2, 0)
 df$plateau <- ifelse(df$t > t_stop, 1, 0)
