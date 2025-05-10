@@ -1,45 +1,32 @@
 import pandas as pd
 import numpy as np
 
+from ce import cetools
+
+
 import matplotlib.pyplot as plt
 plt.interactive(True)
+
+
+fmli_2019 = cetools.get_interview_data(2019)
+fmli_2018 = cetools.get_interview_data(2018)
+
+vars_df, codes_df = cetools.get_data_dictionary()
+
+income_bf_tax_2019 = cetools.estimate_annual_quantity("FINCBTXM", fmli_2019)
+income_bf_tax_2018 = cetools.estimate_annual_quantity("FINCBTXM", fmli_2018)
 
 # www.bls.gov/cex/pumd_data.htm#csv
 # https://www.bls.gov/cex/pumd-getting-started-guide.htm
 
 # Let's start with the FMLI file with CU level Summary Expenditures
 # This is the "Interview Survey" as opposed to the "diary survey"
-def read_fmli(fname, year, quarter):
-    fmli = pd.read_csv(fname)
-    fmli.insert(0, 'year', year)
-    fmli.insert(1, 'quarter', quarter)
-    return fmli
-
-def months_in_scope(interview_mo, quarter):
-    months_in_scope = np.nan
-    if quarter in [1, 2, 3, 4]:
-        if interview_mo in [1, 2, 3]:
-            months_in_scope = interview_mo - 1
-        elif interview_mo in [4, 5, 6, 7, 8, 9, 10, 11, 12]:
-            months_in_scope = 3
-        else:
-            raise ValueError(f"interview_mo {interview_mo} outside of range")
-    elif quarter == 5:
-        if interview_mo in [1, 2, 3]:
-            months_in_scope = 4 - interview_mo
-        else:
-            raise ValueError(f"interview_mo {interview_mo} outside of range")
-
-    else:
-        raise ValueError(f"quarter {quarter} outside of range")
-    return months_in_scope
-
 # The x means that this file appeared in last year's also, and updates were made
 # On the same information
-fmli_q1 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw18/fmli191.csv",
-                    2019, 1)
-#fmli_q1 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw19/intrvw19/fmli191x.csv",
+#fmli_q1 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw18/fmli191.csv",
 #                    2019, 1)
+fmli_q1 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw19/intrvw19/fmli191x.csv",
+                    2019, 1)
 fmli_q2 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw19/intrvw19/fmli192.csv",
                     2019, 2)
 fmli_q3 = read_fmli("/mnt/c/devl/data/carbon/CE/intrvw19/intrvw19/fmli193.csv",
@@ -56,12 +43,6 @@ fmli_2019 = pd.concat([fmli_q1, fmli_q2, fmli_q3, fmli_q4, fmli_q5])
 # The last digit of NEWID indicates the interview number in a series of 4,
 # or the week of diary collection in a series of 2.
 # All values prior to the last digit, identify a CU.
-
-def get_unit_id(newid):
-    return int(str(newid)[:-1])
-
-def get_interview_id(newid):
-    return int(str(newid)[-1])
 
 # 91 PSUs coded as "S" (Urban > 2.5 Mil), "N" (Urban < 2.5 Mil), "R" (rural)
 # Hm I only see the S PSUs
@@ -149,15 +130,16 @@ np.round(np.sum(w) / 1000) # compare to 132,242
 # FINCBTXM - Total amount of family income before taxes (Imputed or collected data)
 # AGE_REF - Age of reference person
 # in the last 12 months (Imputed or collected data)
-var = fmli_2019['FINCBTXM']
 
 def estimate(var):
     denom = np.sum(w)
     numer = np.sum(w * var)
     return numer / denom
 
-estimate(fmli_2019["AGE_REF"])  # Compare to 51.544
-estimate(fmli_2019["FINCBTXM"])  # Compare to 51.544
+estimate(fmli_2019["AGE_REF"])  # Compare to 51.6
+estimate(fmli_2019["FINCBTXM"])  # Compare to 82,852
+# Maybe they're close enough: https://www.bls.gov/cex/csxfaqs.htm#qb6
+
 # From Section 6.1 of the Getting Started Guide (https://www.bls.gov/cex/pumd-getting-started-guide.htm)
 # Why do users need data from two years to estimate one calendar year?
 # Users report expenditures for the three months prior to the interview.
