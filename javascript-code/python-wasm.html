@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimPy WebAssembly App with Plot</title>
+</head>
+<body>
+    <h1>SimPy WebAssembly App with Matplotlib</h1>
+    <p>Enter a number for the simulation:</p>
+    <input type="number" id="num_customers" placeholder="Enter a number">
+    <button onclick="runSimulation()">Run Simulation</button>
+
+    <h2>Simulation Output:</h2>
+    <pre id="output"></pre>
+    
+    <h2>Plot:</h2>
+    <img id="plot" alt="Plot will appear here" />
+
+    <script type="module">
+        // Load Pyodide
+        async function loadPyodideAndPackages() {
+            let pyodide = await loadPyodide();
+            await pyodide.loadPackage("micropip");
+            await pyodide.runPythonAsync(`
+                import micropip
+                await micropip.install(['matplotlib', 'simpy'])
+            `);
+            return pyodide;
+        }
+
+        let pyodideReady = loadPyodideAndPackages();
+
+        // Make the runSimulation function globally accessible
+        window.runSimulation = async function runSimulation() {
+            let numCustomers = document.getElementById("num_customers").value;
+            let outputElement = document.getElementById("output");
+            outputElement.textContent = "Running simulation...";
+
+            // Wait for Pyodide to be ready
+            let pyodide = await pyodideReady;
+
+            // Python code to echo the input and generate a Matplotlib plot
+            const pythonCode = `
+import simpy  # Imported but not used
+import matplotlib.pyplot as plt
+import io
+import base64
+
+# SimPy version
+simpy_version = simpy.__version__
+
+# Just echoing the input
+num_customers = int(${numCustomers})
+simulation_result = f"Simulation input was: {num_customers}"
+
+# Create a simple bar plot
+plt.figure()
+plt.bar(['Customers'], [num_customers])
+plt.title('Number of Customers')
+plt.xlabel('Category')
+plt.ylabel('Count')
+
+# Save the plot to a PNG image in a memory buffer
+buf = io.BytesIO()
+plt.savefig(buf, format='png')
+buf.seek(0)
+image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+
+# Combine both outputs
+output = f"SimPy Version: {simpy_version}\\n{simulation_result}"
+output, image_base64
+            `;
+
+            // Run the simulation in Pyodide and display both outputs
+            let [result, image_base64] = await pyodide.runPythonAsync(pythonCode);
+
+            // Update the text output
+            outputElement.textContent = result;
+
+            // Display the plot in the <img> tag
+            let imgElement = document.getElementById("plot");
+            imgElement.src = 'data:image/png;base64,' + image_base64;
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+</body>
+</html>
