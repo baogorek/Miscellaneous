@@ -35,77 +35,127 @@ colnames(df) <- paste0("x", 1:p)
 df["y"] <- b0 + df$x1 * b1 + df$x2 * b2 + df$x3 * b3 + df$x4 * b4 + sigma_e * rnorm(n)
 summary(lm(y ~ x1 + x2 + x3 + x4, data = df))
 
-sample_z <- function(alpha, beta, zeta, gamma) {
-    stopifnot(length(alpha) == 4)
-    stopifnot(length(beta) == 1)
+
+# Onto the L0 part
+
+sample_z <- function(log_alpha, beta, zeta, gamma) {
     # Generating the data
-    u <- runif(p)  # I'm going to try to apply it to just the regression coefficients
+    p <- as.integer(log_alpha$numel())
+    # u <- runif(p)
+    eps <- 1e-6
+    u <- torch_rand(p)$clamp(eps, 1 - eps)
     # Below draws from the logistic distributions with mean log(alpha) / beta
     # X ~ Logistic(mu, s) can be represented as X = mu + s * (log (U) - log(1 - U)), U ~ Uniform
-    X <- log(u / (1 - u)) / beta + log(alpha) / beta
-    # Side note, thei difference of two Gumbels is Logistic distributed
+    # X <- log(u / (1 - u)) / beta + log(alpha) / beta
+    X <- (torch_log(u) - torch_log(1 - u) + log_alpha) / beta
+    # Side note, the difference of two Gumbels is Logistic distributed
     # Ordinary concrete always lives wtihin 0, 1, allows for the reparameterization trick
-    s <- 1 / (1 + exp(-X))
+    # s <- 1 / (1 + exp(-X))
+    s <- torch_sigmoid(X)
     # Hard concrete stretches range outside 0, 1, then clamps to produce point masses
     s_bar <- s * (zeta - gamma) + gamma 
-    #z <- pmin(1, pmax(0, s_bar))
-    z <- torch_clamp(s_bar, min = 0, max = 1)
+    # z <- pmin(1, pmax(0, s_bar))
+    z <- s_bar$clamp(0, 1)
     z
 }
 
-complexity_loss <- function(alpha, beta, zeta, gamma) {
+complexity_loss <- function(log_alpha, beta, zeta, gamma) {
     # I think we should really only need alpha
-    torch_sum(1 / (1 + exp(log(alpha) - beta * log(-gamma / zeta))))
-
+    c <- -beta * log(-gamma / zeta)  # scalar
+    pi <- torch_sigmoid(log_alpha + c)
+    pi$sum() 
 }
+
+init_log_alpha <- function(keep_prob, size, loc_sd = 0.01) {
+  # Convert keep-probability (p) into the corresponding logit.
+  # This is the mean mu around which we initialize log_alpha.
+  # logit(p) = log(p / (1 - p))
+  mu <- log(keep_prob / (1 - keep_prob))
+
+  # Now add a tiny bit of Gaussian noise around mu.
+  # This breaks symmetry so not all gates start with the exact same probability.
+  # stddev = 0.01 as in the paper.
+  init_vals <- rnorm(size, mean = mu, sd = loc_sd)
+
+  # Convert to torch tensor and mark as learnable (requires_grad = TRUE)
+  log_alpha <- torch_tensor(init_vals, requires_grad = TRUE)
+
+  return(log_alpha)
+}
+
+# Notes on the model:
+# The expected number of active gates is:
+# Pr(Z > 0) = Sigmoid(log(alpha) - beta * log(-gamma / zeta))
+# We use that in the lambda initiazliation above to set alpha given a probability
+
 
 # Initialize
 
 b0_parm <- torch_tensor(mean(df$y), requires_grad = TRUE)
 b_parm <- torch_tensor(.1 * runif(p), requires_grad = TRUE)
-alpha <- torch_tensor(rep(3, p), requires_grad = TRUE)  # TODO: think about initialization
-beta <- 1  # I shouldn't need this to be a tensor
+
+# The only trainable L0 parameter is alpha, essentially the logit bias to keep the gate on
+log_alpha <- init_log_alpha(keep_prob = 0.5, size = p)
+# Architectural constants that shape distribution to approximate a discrete on/off switch after clipping
+beta <- 2 / 3
 gamma <- -0.1
 zeta <- 1.1
-lambda <- 1e-3
 
-epochs <- 1500
+# Getting a good value for lambda
+sigma2_hat <- var(resid(lm(y ~ x1 + x2 + x3 + x4, data = df)))
+lambda <- as.numeric(0.1 * sigma2_hat)
 
-opt <- optim_sgd(list(b0_parm, b_parm, alpha), lr = 0.01)
+# Bringing the data into torch form
+x_cols <- paste0("x", 1:p)
+X <- torch_tensor(as.matrix(df[, x_cols, drop = FALSE]), dtype = torch_float())
+y <- torch_tensor(df$y, dtype = torch_float())
+
+epochs <- 5000
+
+opt <- optim_adam(list(b0_parm, b_parm, log_alpha), lr = 1e-2)  # tune lr
 
 for (k in 1:epochs) {
-  idx <- sample.int(n) # random row order
-  epoch_loss <- c()
-  for (i in idx) {
-    x_i <- torch_tensor(as.numeric(df[i, paste0("x", 1:p)]))
-    y_i <- torch_tensor(as.numeric(df[i, "y"]))
-    z <- sample_z(alpha, beta, zeta, gamma)
-    b_star <- b_parm * z
-    y_hat_i <- b0_parm + torch_dot(b_star, x_i)
+  z <- sample_z(log_alpha, beta, zeta, gamma)   # one gate sample per forward
+  b_star <- b_parm * z
 
-    loss <- (y_i - y_hat_i)$pow(2) + lambda * complexity_loss(alpha, beta, zeta, gamma)
+  y_hat <- b0_parm + X$matmul(b_star$unsqueeze(2))$squeeze()
+  data_loss <- (y - y_hat)$pow(2)$mean()
+  comp <- complexity_loss(log_alpha, beta, zeta, gamma)
+  loss <- data_loss + lambda * comp
 
-    opt$zero_grad()
-    loss$backward()
-    opt$step()
-    epoch_loss <- c(epoch_loss, as.numeric(loss))
+  opt$zero_grad(); loss$backward(); opt$step()
 
-  }
-  if (k %% 10 == 0) {
-    print(k)
-    cat("alpha", as.numeric(alpha), "\n")
-    cat("b_parm", as.numeric(b_parm), "\n")
-    cat("b_star", as.numeric(b_star), "\n")
-    cat("loss", mean(epoch_loss), "\n")
+  if (k %% 50 == 0) {
+    with_no_grad({
+      c <- -beta * log(-gamma / zeta)
+      pi <- torch_sigmoid(log_alpha + c)        # P(gate ON)
+      cat(sprintf("epoch %d  loss=%.4f  comp=%.2f  pi=%s\n",
+                  k, as.numeric(loss), as.numeric(comp),
+                  paste(round(as.numeric(pi), 2), collapse=", ")))
+    })
   }
 }
 
-alpha_final <- as.numeric(alpha)
-sigmoid_final <- 1 / (1 + exp(-log(alpha_final)))
-sigmoid_final2 <- 1 / (1 + 1 / alpha_final)  # same thing
+with_no_grad({
+  # For reference (not strictly needed for gating):
+  alpha_final <- torch_exp(log_alpha)
 
-z_final <- pmin(1, pmax(0, sigmoid_final * (zeta - gamma) + gamma))
-b_parm_final <- z_final * as.numeric(b_parm)
+  # Probability a gate is ON (good for reporting/pruning)
+  c <- -beta * log(-gamma / zeta)
+  pi_final <- torch_sigmoid(log_alpha + c)
 
-print(z_final)
-print(b_parm_final)
+  # Deterministic gate (u = 0.5) through hard-concrete stretch + clamp
+  # (Recall this is the logistic iwthout the log(u) + log(1 - u), u ~ Uniform(0, 1)
+  z_final <- ((log_alpha / beta)$sigmoid() * (zeta - gamma) + gamma)$clamp(0, 1)
+
+  # Gated coefficients as tensors (don’t coerce until printing)
+  b_parm_final <- b_parm * z_final
+
+  # --- Pretty printing (convert to R numerics only here) ---
+  cat("alpha:        ", paste(round(as.numeric(alpha_final), 4), collapse = ", "), "\n")
+  cat("pi (P>0):     ", paste(round(as.numeric(pi_final),   4), collapse = ", "), "\n")
+  cat("z_final:      ", paste(round(as.numeric(z_final),    4), collapse = ", "), "\n")
+  cat("b_parm_final: ", paste(round(as.numeric(b_parm_final),4), collapse = ", "), "\n")
+})
+
+print("complete")
