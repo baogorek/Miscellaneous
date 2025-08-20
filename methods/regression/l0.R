@@ -1,3 +1,5 @@
+# LEARNING SPARSE NEURAL NETWORKS THROUGH L0 REGULARIZATION
+# https://arxiv.org/pdf/1712.01312
 library(MASS)
 library(dplyr)
 library(torch)
@@ -107,7 +109,8 @@ epochs <- 5000
 opt <- optim_adam(list(b0_parm, b_parm, log_alpha), lr = 1e-2)  # tune lr
 
 for (k in 1:epochs) {
-  z <- sample_z(log_alpha, beta, zeta, gamma)   # one gate sample per forward
+  # one MC sample per forward pass is exactly what the paper does
+  z <- sample_z(log_alpha, beta, zeta, gamma)
   b_star <- b_parm * z
 
   y_hat <- b0_parm + X$matmul(b_star$unsqueeze(2))$squeeze()
