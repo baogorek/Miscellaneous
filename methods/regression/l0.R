@@ -145,7 +145,10 @@ with_no_grad({
   pi_final <- torch_sigmoid(log_alpha + c)
 
   # Deterministic gate (u = 0.5) through hard-concrete stretch + clamp
-  # (Recall this is the logistic iwthout the log(u) + log(1 - u), u ~ Uniform(0, 1)
+  # (Recall this is the logistic iwthout the log(u) + log(1 - u), u ~ Uniform(0, 1) and temperature bate
+  # The final gate is simply the pointwise expectation of the stretched sigmoid, clipped to [0, 1]
+  # At test time: there’s no relaxation — you just take a deterministic gate from log(alph)
+  # so beta (temperature) disappears. There's no softening left to do the regularize random samples
   z_final <- ((log_alpha / beta)$sigmoid() * (zeta - gamma) + gamma)$clamp(0, 1)
 
   # Gated coefficients as tensors (don’t coerce until printing)
@@ -158,4 +161,3 @@ with_no_grad({
   cat("b_parm_final: ", paste(round(as.numeric(b_parm_final),4), collapse = ", "), "\n")
 })
 
-print("complete")
