@@ -2,16 +2,8 @@ library(MASS)
 library(dplyr)
 library(torch)
 
-# Sample size
+# Data generating process ------- 
 n <- 100
-
-# Parameters of the hard concrete distribution
-alpha <- 1 
-beta <- 0.5
-lambda <- -0.1
-zeta <- 1.1
-
-# Parameters of the regression
 
 b0 <- 30
 b1 <- 1
@@ -36,7 +28,7 @@ df["y"] <- b0 + df$x1 * b1 + df$x2 * b2 + df$x3 * b3 + df$x4 * b4 + sigma_e * rn
 summary(lm(y ~ x1 + x2 + x3 + x4, data = df))
 
 
-# Onto the L0 part
+# Onto the L0 part -----------------------
 
 sample_z <- function(log_alpha, beta, zeta, gamma) {
     # Generating the data
