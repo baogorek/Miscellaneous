@@ -10,6 +10,10 @@ library(zoo)
 
 df <- read_csv('job_revisions_1_mo.csv')
 
+# You can jump down to Article 2 for the mixture modeling
+
+# Article 1 ------
+
 revision_chart <- qcc(data = df$revision,
                       type = "xbar.one",
                       labels = df$revision_report_date,
@@ -47,7 +51,7 @@ revision_chart <- qcc(data = df_post1980$revision,
 # Plot the newly defined chart
 plot(revision_chart_corrected)
 
-
+# Article 2 ------
 # Back at it for some mixture modeling -------------
 
 df_post1990 <- df %>%
