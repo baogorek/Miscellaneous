@@ -65,6 +65,7 @@ options(max.print = 10000)
 
 #> print(fit)  # Not ideal for printing
 # Also I'm not aware of a way that's not just copying and pasting lambda
+# Look down below, claude code found one.
 # Well, maybe the cross validation makes that easier
 
 
@@ -86,6 +87,71 @@ coef(fit,lambda=1.44341e-03, gamma=10)
 # Just a touch of L2 works fine
 coef(fit,lambda=3.78820e-02, gamma=0.0001)
 
-# Ok, but can this procedure handle a generalized regression situation, say n > p
+# Ok, but can this procedure handle a generalized regression situation, say n < p?
+# Yes, it can
+
+# Test underdetermined case (n < p)
+n <- 50
+p <- 200
+b <- rep(0, p)
+b[c(5, 20, 35, 80, 150)] <- c(2, -3, 1.5, -1, 0.8)
+
+X <- mvrnorm(n = n, mu = rep(0, p), Sigma = diag(p))
+y <- as.vector(10 + X %*% b + 0.5 * rnorm(n))
+
+fit_underdetermined <- L0Learn.fit(X, y, penalty="L0", maxSuppSize=10)
+print(fit_underdetermined)
+
+dim(X)
+length(y)
+
+# LM doesn't fail, but you can see there are a bunch of NAs
+df <- data.frame(y = y, X)
+lm(y ~ ., data = df)
 
 
+lambda_5 <- fit_underdetermined$lambda[[1]][which(fit_underdetermined$suppSize[[1]] == 5)[1]]
+coef_5 <- coef(fit_underdetermined, lambda = lambda_5, gamma = 0)
+
+cat("n =", n, ", p =", p, "→ underdetermined\n")
+cat("True support:", which(b != 0), "\n")
+cat("L0 found:", which(abs(coef_5[-1, 1]) > 1e-10), "\n")
+
+# Remaining: keeping coefficients positive, removing the intercept
+# Yeah, it looks like we can. See page 12: https://cran.r-project.org/web/packages/L0Learn/L0Learn.pdf
+
+#intercept: If FALSE, no intercept term is included in the model.
+
+# lows: Lower bounds for coefficients. Either a scalar for all coefficients to have the
+# same bound or a vector of size p (number of columns of X) where lows[i] is the
+# lower bound for coefficient i.
+
+# highs: Upper bounds for coefficients. Either a scalar for all coefficients to have the
+# same bound or a vector of size p (number of columns of X) where highs[i] is the
+# upper bound for coefficient i.
+
+# And finally, we can use our relative mean squared error function? Again, yes, but not
+# out of the box. We will have to transform the data to get the effect. From Claude Code:
+
+#  Goal: Minimize Σ[(ŷᵢ - yᵢ)² / (yᵢ + c)²] using standard squared error regression
+#
+#  Transformation:
+#  1. Scale each observation by dividing by √(yᵢ + c):
+#    - X'ᵢ = Xᵢ / √(yᵢ + c)
+#    - y'ᵢ = yᵢ / √(yᵢ + c)
+#  2. Run standard regression on (X', y') to get coefficients β
+#  3. For predictions on new data:
+#    - Use original scale: ŷ = X × β
+#
+#  Why it works:
+#  - Standard regression minimizes: Σ(X'ᵢβ - y'ᵢ)²
+#  - Substituting: Σ[(Xᵢβ - yᵢ)² / (yᵢ + c)]
+#  - This is exactly the relative squared error with constant
+#
+#  Implementation notes:
+#  - Choose c based on your data (e.g., 1, 0.01×mean(y), or smallest non-zero y)
+#  - The √ in the transformation is key - using 1/(yᵢ + c) would be incorrect
+#  - Each row gets its own scaling factor based on its target value
+#  - The learned coefficients β apply directly to original-scale features
+#
+#  This elegantly converts your relative error problem into a standard regression problem through data preprocessing.
