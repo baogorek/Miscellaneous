@@ -2,10 +2,13 @@
 # https://arxiv.org/pdf/1712.01312
 library(MASS)
 library(dplyr)
+library(readr)
 library(torch)
 
+set.seed(12543)
+
 # Data generating process ------- 
-n <- 100
+n <- 500
 
 b0 <- 30
 b1 <- 1
@@ -29,6 +32,7 @@ colnames(df) <- paste0("x", 1:p)
 df["y"] <- b0 + df$x1 * b1 + df$x2 * b2 + df$x3 * b3 + df$x4 * b4 + sigma_e * rnorm(n)
 summary(lm(y ~ x1 + x2 + x3 + x4, data = df))
 
+write_csv(df, "~/devl/regr.csv")
 
 # Onto the L0 part -----------------------
 
