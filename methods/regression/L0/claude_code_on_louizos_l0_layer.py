@@ -2,7 +2,9 @@
 """
 This is Claude Code's attempt to understand if there was a serious problem
 in https://github.com/AMLab-Amsterdam/L0_regularization or just a swapped
-sign. Honestly it's still unclear to me, but one this is certain: as is,
+sign.
+
+Ben talking: Honestly it's still unclear to me, but one this is certain: as is,
 this L0Layer bombs on a simple sparse linear regression example.
 
 Understanding the Mathematical Formulation in L0Dense
@@ -21,6 +23,8 @@ a log probability that should be MAXIMIZED (hence the negative).
 """
 
 import sys
+
+# https://github.com/AMLab-Amsterdam/L0_regularization - not installable
 sys.path.append('/home/baogorek/devl/L0_regularization')
 
 import torch

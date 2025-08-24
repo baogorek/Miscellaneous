@@ -1,5 +1,8 @@
 # LEARNING SPARSE NEURAL NETWORKS THROUGH L0 REGULARIZATION
 # https://arxiv.org/pdf/1712.01312
+# 
+# CHANGE But we do leave the temperature in the final gate,
+# which is essential for good performance here
 library(MASS)
 library(dplyr)
 library(readr)
