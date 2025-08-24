@@ -155,3 +155,46 @@ cat("L0 found:", which(abs(coef_5[-1, 1]) > 1e-10), "\n")
 #  - The learned coefficients β apply directly to original-scale features
 #
 #  This elegantly converts your relative error problem into a standard regression problem through data preprocessing.
+
+# Instructions for Claude Code =================
+# Ok, Claude Code, this is where I want you to start!
+# Convert this python code into R
+import numpy as np
+import l0learn
+
+# Problem size and random seed
+Q = 50            # number of targets/samples
+N = 50_000        # number of households/features  
+rng = np.random.default_rng(0)
+
+# Metric matrix M (shape Q x N) - underdetermined system
+M = rng.normal(size=(Q, N))
+
+# Target vector y
+y = np.random.lognormal(mean=10, sigma=2, size=50).round()
+
+print("=== Underdetermined System with L0Learn ===")
+print(f"Original M shape: {M.shape}")
+print(f"Target sum: {y.sum():,.0f}")
+
+# Nah man, we're running the whole thing 
+M_subset = M
+
+# Convert to proper format
+M_fortran = np.asfortranarray(M_subset).astype(np.float64)
+y_fortran = y.astype(np.float64)
+
+# Fit with L0 and non-negative constraints
+
+fit = l0learn.fit(
+    X=M_fortran,
+    y=y_fortran,
+    penalty="L0",
+    max_support_size=100,  # At most 1000 non-zero
+    lows=0.0,  # Non-negative constraint
+    highs=float('inf'),
+    intercept=False,
+    num_lambda=50  # Need this 50 or under or it will segfault
+)
+
+
