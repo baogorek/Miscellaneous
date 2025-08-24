@@ -156,45 +156,52 @@ cat("L0 found:", which(abs(coef_5[-1, 1]) > 1e-10), "\n")
 #
 #  This elegantly converts your relative error problem into a standard regression problem through data preprocessing.
 
-# Instructions for Claude Code =================
-# Ok, Claude Code, this is where I want you to start!
-# Convert this python code into R
-import numpy as np
-import l0learn
+# Claude, this is where we're working: 
 
 # Problem size and random seed
-Q = 50            # number of targets/samples
-N = 50_000        # number of households/features  
-rng = np.random.default_rng(0)
+Q <- 5000  # number of targets/samples
+N <- 50000  # number of households/features - There will be this many weights
+set.seed(0)
 
 # Metric matrix M (shape Q x N) - underdetermined system
-M = rng.normal(size=(Q, N))
+M <- matrix(rlnorm(Q * N, meanlog=1.5, sdlog=.25), nrow = Q, ncol = N)
+
+# Let's make a true w so we know that the target is in the space spanned by w
+
+w_true <- rlnorm(N, meanlog=2, sdlog=1)
 
 # Target vector y
-y = np.random.lognormal(mean=10, sigma=2, size=50).round()
-
-print("=== Underdetermined System with L0Learn ===")
-print(f"Original M shape: {M.shape}")
-print(f"Target sum: {y.sum():,.0f}")
-
-# Nah man, we're running the whole thing 
-M_subset = M
-
-# Convert to proper format
-M_fortran = np.asfortranarray(M_subset).astype(np.float64)
-y_fortran = y.astype(np.float64)
+y <- as.numeric(M %*% w_true)
 
 # Fit with L0 and non-negative constraints
-
-fit = l0learn.fit(
-    X=M_fortran,
-    y=y_fortran,
-    penalty="L0",
-    max_support_size=100,  # At most 1000 non-zero
-    lows=0.0,  # Non-negative constraint
-    highs=float('inf'),
-    intercept=False,
-    num_lambda=50  # Need this 50 or under or it will segfault
+fit <- L0Learn.fit(
+    M,
+    y,
+    penalty = "L0",
+    maxSuppSize = 3000,  # Number that can be non-negative, but it will be a grid 
+    # Note for Claude: it just falls apart when you uncomment the following line:
+    #lows = 0.0,  # Non-negative constraint
+    highs = Inf,
+    intercept = FALSE,
 )
+
+options(max.print = 1000)
+print(fit)
+
+single_lambda=1.16e-10
+w_hat <- as.numeric(coef(fit, lambda=single_lambda, gamma=0))
+
+sum(w_hat > 0)
+sum(w_hat == 0)
+sum(w_hat < 0)
+
+w_hat[w_hat > 0]
+
+summary(w_hat)
+
+# Let's get an r-squared
+y_hat <- as.numeric(predict(fit, newx=M, lambda=single_lambda, gamma=0))
+cor(as.numeric(y_hat), y)
+
 
 
