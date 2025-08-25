@@ -2,7 +2,6 @@
 Fit L0 regression model using the code at  
 https://github.com/AMLab-Amsterdam/L0_regularization
 To an actual sparse regression situation
-(relies on l0_louizos_improved_gate.R to have run)
 """
 
 import sys
@@ -14,6 +13,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import statsmodels.api as sm
+from scipy.stats import multivariate_normal
 
 # https://github.com/AMLab-Amsterdam/L0_regularization is not an installable package
 sys.path.append('/home/baogorek/devl/L0_regularization')
@@ -21,9 +21,30 @@ from l0_layers import L0Dense
 
 
 torch.manual_seed(42)
+np.random.seed(12543)  # Match seed from l0_louizos_improved_gate.py
 
-# The csv below is generated in l0_louizos_improved_gate.R 
-df = pd.read_csv('/home/baogorek/devl/regr.csv')
+# Data generating process -------
+n = 500
+
+b0 = 30
+b1 = 1
+b2 = 0
+b3 = -2
+b4 = 0
+
+b = np.array([b1, b2, b3, b4])
+p = len(b)
+
+rho = 0.5
+
+sigma_X = np.full((p, p), rho)
+np.fill_diagonal(sigma_X, 1)
+sigma_e = 1.5
+
+raw_data = multivariate_normal.rvs(mean=np.zeros(p), cov=sigma_X, size=n)
+df = pd.DataFrame(raw_data, columns=[f'x{i+1}' for i in range(p)])
+
+df['y'] = b0 + df['x1'] * b1 + df['x2'] * b2 + df['x3'] * b3 + df['x4'] * b4 + sigma_e * np.random.randn(n)
 
 X = df[['x1', 'x2', 'x3', 'x4']].values
 y = df['y'].values
@@ -37,8 +58,9 @@ ols_model = sm.OLS(y, X_with_const).fit()
 print(ols_model.summary())
 sigma2_hat = ols_model.mse_resid
     
-   
-l0_lambda = 0.5 * sigma2_hat  # Increase penalty to achieve better sparsity
+
+# 0.28 will push it to 1, 0.27 pushes it to 3
+l0_lambda = 0.27 * sigma2_hat  # Increase penalty to achieve better sparsity
 learning_rate=0.01
 epochs=5000  # Match R implementation
 
@@ -79,10 +101,10 @@ theta_tilde = model.weights.squeeze().numpy()
 z = model.sample_z(1, sample=False).squeeze().numpy()
 
 weights = theta_tilde * z
-weights
+print(f"Final weights: {weights}")
 
 bias = model.bias.data.item()
-bias
+print(f"Final bias: {bias}")
 
 # Let's match a prediction ------
 bias + np.dot(X[0, :], weights)

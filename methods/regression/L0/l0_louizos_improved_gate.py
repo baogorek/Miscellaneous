@@ -103,7 +103,7 @@ zeta = 1.1
 # Getting a good value for lambda
 residuals = y_np - lr.predict(X_np)
 sigma2_hat = np.var(residuals)
-lambda_reg = 0.1 * sigma2_hat
+lambda_reg = 0.1 * sigma2_hat  # 0.15 will work, 0.05 will work
 
 # Bringing the data into torch form
 x_cols = [f'x{i+1}' for i in range(p)]
