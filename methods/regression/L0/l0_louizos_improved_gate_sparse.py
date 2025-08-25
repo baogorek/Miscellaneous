@@ -91,9 +91,6 @@ indices = torch.LongTensor(np.vstack([X_coo.row, X_coo.col]))
 values = torch.FloatTensor(X_coo.data)
 X_torch_sparse = torch.sparse_coo_tensor(indices, values, X_sparse.shape, dtype=torch.float32)
 
-# For operations that need dense (like backward), we'll use dense version
-# PyTorch sparse tensors have limited autograd support
-X = torch.FloatTensor(X_sparse.toarray())
 y = torch.tensor(y_np, dtype=torch.float32)
 
 # Initialize parameters
@@ -117,8 +114,9 @@ print(f"\nStarting L0 optimization with {p} features...")
 for k in range(1, epochs + 1):
     z = sample_z(log_alpha, beta, zeta, gamma)
     b_star = b_parm * z
-    
-    y_hat = b0_parm + X @ b_star
+
+    y_hat = b0_parm + torch.sparse.mm(X_torch_sparse, b_star.unsqueeze(1)).squeeze(1)
+
     data_loss = (y - y_hat).pow(2).mean()
     comp = complexity_loss(log_alpha, beta, zeta, gamma)
     loss = data_loss + lambda_reg * comp
