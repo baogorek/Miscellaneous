@@ -58,7 +58,6 @@ ols_model = sm.OLS(y, X_with_const).fit()
 print(ols_model.summary())
 sigma2_hat = ols_model.mse_resid
     
-
 # 0.28 will push it to 1, 0.27 pushes it to 3
 l0_lambda = 0.27 * sigma2_hat  # Increase penalty to achieve better sparsity
 learning_rate=0.01
@@ -86,14 +85,11 @@ for epoch in range(epochs):
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-    
-        
-# analyze results ---------
 
+
+# analyze results --------------------------------------------------------
 model.eval()
-
 torch.set_grad_enabled(False)
-
 
 predictions = model.forward(X_tensor).squeeze()
 
@@ -106,7 +102,7 @@ print(f"Final weights: {weights}")
 bias = model.bias.data.item()
 print(f"Final bias: {bias}")
 
-# Let's match a prediction ------
+# Let's match a few predictions to make sure we understand what's going on ------
 bias + np.dot(X[0, :], weights)
 predictions[0]
 
