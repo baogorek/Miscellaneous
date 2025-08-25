@@ -154,20 +154,18 @@ cat("L0 found:", which(abs(coef_5[-1, 1]) > 1e-10), "\n")
 #  - Each row gets its own scaling factor based on its target value
 #  - The learned coefficients β apply directly to original-scale features
 #
-#  This elegantly converts your relative error problem into a standard regression problem through data preprocessing.
 
-# Claude, this is where we're working: 
 
-# Problem size and random seed
+library(L0Learn)
+
 Q <- 5000  # number of targets/samples
 N <- 50000  # number of households/features - There will be this many weights
-set.seed(0)
+set.seed(34543)
 
 # Metric matrix M (shape Q x N) - underdetermined system
 M <- matrix(rlnorm(Q * N, meanlog=1.5, sdlog=.25), nrow = Q, ncol = N)
 
 # Let's make a true w so we know that the target is in the space spanned by w
-
 w_true <- rlnorm(N, meanlog=2, sdlog=1)
 
 # Target vector y
@@ -179,21 +177,21 @@ fit <- L0Learn.fit(
     y,
     penalty = "L0",
     maxSuppSize = 3000,  # Number that can be non-negative, but it will be a grid 
-    # Note for Claude: it just falls apart when you uncomment the following line:
-    #lows = 0.0,  # Non-negative constraint
+    # USER NOTE: toggle the following off after running through this once
+    #lows = 0.0,  # Add non-negative box constraint
     highs = Inf,
     intercept = FALSE,
 )
 
 options(max.print = 1000)
-print(fit)
+print(fit)  # USER NOTE: look at the number of non-zero weights
 
-single_lambda=1.16e-10
+
+single_lambda=4.14795e-11  # You can look at print(fit), but I choose a very small value
 w_hat <- as.numeric(coef(fit, lambda=single_lambda, gamma=0))
 
-sum(w_hat > 0)
-sum(w_hat == 0)
-sum(w_hat < 0)
+sum(w_hat != 0)
+
 
 w_hat[w_hat > 0]
 
