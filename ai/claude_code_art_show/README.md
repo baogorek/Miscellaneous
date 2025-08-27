@@ -1,10 +1,7 @@
 The Claude Code ASCII Art Show!
 ========================================
 
-## Introduction: ASCII Art and a complete example of Subagents in Action
-
-Here's the kind of thing our AI artists will be making here:
-
+```
       _____====-_ _-====_____
     _--~~~    --_--_--_-~--_
  _-~       ___--_--__--_    ~-_
@@ -22,18 +19,25 @@ Here's the kind of thing our AI artists will be making here:
          |__|__|___|  /   |/
             (_(_(_)_)(_)_)
 
+```
 
+## Subagents in Action
 
 This is a silly but quite complete example of Claude Code subagents in action.
 There are three "artists" hat make ASCII art, and these are Claude Code subagents:
 
-- RZR: .claude/agents/ascii-artist-rzr.md - Cyberpunk glitch style with jagged, aggressive urban graffiti aesthetics and deliberate digital decay
+- RZR
+    - .claude/agents/ascii-artist-rzr.md
+    - Cyberpunk glitch style with jagged, aggressive urban graffiti aesthetics and deliberate digital decay
 
-- Vivienne 'Pixel Prophet' Cross: .claude/agents/ascii-artist-vivienne.md - Geometric mandalas and sacred geometry using only punctuation marks
+- Vivienne 'Pixel Prophet' Cross
+    - .claude/agents/ascii-artist-vivienne.md 
+    - Geometric mandalas and sacred geometry using only punctuation marks
   and numbers, perfectly symmetrical
 
-- Mad Max 'Terminal' Rodriguez - .claude/agents/mad-max-ascii-artist.md - Detailed explosive vehicle designs (motorcycles, tanks, spaceships) with
-  hidden skull signatures
+- Mad Max 'Terminal' Rodriguez 
+    - .claude/agents/mad-max-ascii-artist.md
+    - Detailed explosive vehicle designs (motorcycles, tanks, spaceships) with hidden skull signatures
 
 
 ## Running the example 
