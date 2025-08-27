@@ -20,6 +20,7 @@ The Claude Code ASCII Art Show!
             (_(_(_)_)(_)_)
 
 ```
+See it on [YouTube](https://www.youtube.com/watch?v=d08tZ4BsjlY).
 
 ## Subagents in Action
 
