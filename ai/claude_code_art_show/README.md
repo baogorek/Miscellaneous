@@ -73,6 +73,21 @@ Finally, if you want to have a full JSON log of the agent / subagent flow, this 
 echo "Let's get this show on the road!" | claude --dangerously-skip-permissions --verbose --output-format stream-json | tee log.json
 ```
 
+## Additional Commands
+
+After the art show has run, you can view individual artist submissions with their critic scores:
+
+```
+/show-artist 1   # Shows RZR's artwork and critic evaluation
+/show-artist 2   # Shows Vivienne's artwork and critic evaluation  
+/show-artist 3   # Shows Mad Max's artwork and critic evaluation
+```
+
+This command will display:
+- The artist's ASCII artwork from their .txt file
+- Their total score from the critic
+- A summary of the critic's final verdict
+
 ## Unsolved
 
  - I still haven't figured out how to make an agent call another agent.
