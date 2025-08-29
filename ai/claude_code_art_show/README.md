@@ -2,22 +2,47 @@ The Claude Code ASCII Art Show!
 ========================================
 
 ```
-      _____====-_ _-====_____
-    _--~~~    --_--_--_-~--_
- _-~       ___--_--__--_    ~-_
-(       /-~~ ~~~~~~~~~~~~ ~~\   )
- `~~ ~~-_/   DESERT RAIDER   \_~~-~`
-    /     /   ^-^     ||\     \
-   /     /            || \     \
-  /     /             ||  \     \
- (     (              ||   )     )
-  \     \  _________  ||  /     /
-   \     ~~---------~~/|_/     /
-    \_                 _/     /
-      ~-___________---~~ ☠   /
-         |  |  |   |   /  | /
-         |__|__|___|  /   |/
-            (_(_(_)_)(_)_)
+● Artist 1: RZR                                                                                                                   
+                                                                                                                                  
+  Artwork: "TOKYO GHOST PROTOCOL v2.█"                                                                                            
+                                                                                                                                  
+                  _____      ______    ____                                                                                       
+             /\     \    /\  _  \  /\   \_\   TOKYO GHOST PROTOCOL v2.█                                                           
+            /  \     \  /  / \  \/  /\   \ \  ------------------------------                                                      
+           /    \     \/   \__\    /  \   \ \ [SYSTEM CORRUPTION IMMINENT]                                                        
+          /      \    /\         /\   \   \ \                                                                                     
+         /   /\   \  /  \       /  \   \   \ \   .:*GLITCH SEQUENCE ACTIVE*:.                                                     
+        /   /  \   \/    \     /    \   \   \ \                                                                                   
+       /   /    \   \     \   /      \   \   \ \                                                                                  
+      /   /    / \   \     \ /        \   \   \ \
+     /   /    /   \   \     \          \   \   \ \
+    /___/____/     \___\     \          \___\   \ \
+   |    |    |     |    |     \          |    |   \ \
+   |____|____|_____|____|______\         |____|    \_\
+    ████████████████████████████         ██████████
+
+     /\     _____      ___    ___     /\     _____
+    /  \   /\    \    /\  \  /\  \   /  \   /\    \
+   /    \ /  \    \  /  \  \/  \  \ /    \ /  \    \
+  /      \\   \    \/    \      /  //      \\   \    \
+  /   /\   \\   \          \    /  //   /\   \\   \    \
+  \___\/\___\\_______\______\__/  / \___\/\___\\_______\
+   \    \    \|      ||      |   /   \    \    \|      |
+    \____\____\      ||      |__/     \____\____\      |
+     \/   \/   |_____||_____/  \/       \/   \/   |____|
+
+    [CORRUPTION LEVEL: ███████████████ 95% ]
+    
+    - RZR
+
+  Critic's Evaluation:
+
+  TOTAL SCORE: 75/100 (2nd Place)
+
+  Summary: RZR's cyberpunk masterpiece showcased excellent thematic coherence with innovative narrative integration. The
+  piece scored particularly high in Creativity & Originality (22/25) for its bold corruption theme and atmospheric text
+  elements. While some technical inconsistencies were noted in line alignment, the overall impact delivered a strong
+  cyberpunk identity with clear visual hierarchy and effective use of progress bars as artistic elements.
 
 ```
 See it on [YouTube](https://www.youtube.com/watch?v=d08tZ4BsjlY).
