@@ -33,16 +33,9 @@ The Claude Code ASCII Art Show!
 
     [CORRUPTION LEVEL: ███████████████ 95% ]
     
-    - RZR
-
   Critic's Evaluation:
 
   TOTAL SCORE: 75/100 (2nd Place)
-
-  Summary: RZR's cyberpunk masterpiece showcased excellent thematic coherence with innovative narrative integration. The
-  piece scored particularly high in Creativity & Originality (22/25) for its bold corruption theme and atmospheric text
-  elements. While some technical inconsistencies were noted in line alignment, the overall impact delivered a strong
-  cyberpunk identity with clear visual hierarchy and effective use of progress bars as artistic elements.
 
 ```
 See it on [YouTube](https://www.youtube.com/watch?v=d08tZ4BsjlY).
